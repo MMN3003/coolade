@@ -1,0 +1,60 @@
+{
+  "app": {
+    "name": "EcoCode Gateway",
+    "loading": "Loading…"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "add": "Add",
+    "search": "Search",
+    "loading": "Loading…",
+    "error": "Error",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "back": "Back",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "download": "Download",
+    "upload": "Upload",
+    "active": "Active",
+    "inactive": "Inactive",
+    "yes": "Yes",
+    "no": "No",
+    "actions": "Actions",
+    "status": "Status",
+    "name": "Name",
+    "date": "Date",
+    "noData": "No data found.",
+    "somethingWrong": "Something went wrong.",
+    "unauthorized": "Your session has expired. Please sign in again.",
+    "required": "This field is required.",
+    "export": "Export CSV"
+  },
+  "auth": {
+    "loginTitle": "Sign in to EcoCode Gateway",
+    "username": "Username",
+    "password": "Password",
+    "loginButton": "Sign in",
+    "loginError": "Incorrect username or password.",
+    "loggingIn": "Signing in…",
+    "logout": "Sign out"
+  },
+  "nav": {
+    "chat": "Chat",
+    "usage": "My Usage",
+    "keys": "API Keys",
+    "admin": "Admin",
+    "adminUsers": "Users",
+    "adminPolicies": "Policies & Quota",
+    "adminUsage": "Org Usage",
+    "adminModels": "Models & Weights",
+    "adminSettings": "Claude Connection",
+    "adminAudit": "Audit Log",
+    "profile": "Account"
+  }
+}

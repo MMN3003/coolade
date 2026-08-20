@@ -1,0 +1,149 @@
+name: ecocode
+
+networks:
+  ecocode_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  users_data:
+  attachments_data:
+  litellm_data:
+  frontend_static:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init-multi-db.sh:/docker-entrypoint-initdb.d/01-init-multi-db.sh:ro
+    expose:
+      - "5432"
+    networks: [ecocode_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    command: ["--config", "/app/config/litellm_config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL}
+      DATABASE_URL: ${LITELLM_DATABASE_URL}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL}
+      MOCK_UPSTREAM_BASE: ${MOCK_UPSTREAM_BASE}
+      UPSTREAM_MODE: ${UPSTREAM_MODE}
+      HTTP_PROXY: ${HTTP_PROXY}
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      NO_PROXY: ${NO_PROXY}
+      PYTHONPATH: /app/config
+    volumes:
+      - ./litellm/litellm_config.yaml:/app/config/litellm_config.yaml:ro
+      - ./litellm/ecocode_upstream_handler.py:/app/config/ecocode_upstream_handler.py:ro
+    expose:
+      - "4000"
+    networks: [ecocode_net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  backend:
+    build:
+      context: ./backend
+      network: host
+    environment:
+      ECOCODE_ENV: ${ECOCODE_ENV}
+      UPSTREAM_MODE: ${UPSTREAM_MODE}
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL}
+      CLAUDE_CREDS_DIR: /host_claude
+      CLI_MAX_CONCURRENCY: ${CLI_MAX_CONCURRENCY}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS}
+      MOCK_CLI: ${MOCK_CLI}
+      MOCK_UPSTREAM_BASE: ${MOCK_UPSTREAM_BASE}
+      ECOCODE_SECRET_KEY: ${ECOCODE_SECRET_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ECOCODE_DATABASE_URL: ${ECOCODE_DATABASE_URL}
+      LITELLM_DATABASE_URL: ${LITELLM_DATABASE_URL}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL}
+      HTTP_PROXY: ${HTTP_PROXY}
+      HTTPS_PROXY: ${HTTPS_PROXY}
+      NO_PROXY: ${NO_PROXY}
+      LDAP_ENABLED: ${LDAP_ENABLED}
+      LDAP_URI: ${LDAP_URI}
+      LDAP_BASE_DN: ${LDAP_BASE_DN}
+      LDAP_BIND_TEMPLATE: ${LDAP_BIND_TEMPLATE}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+    volumes:
+      - users_data:/data/users
+      - attachments_data:/data/attachments
+      - ${CLAUDE_CREDS_DIR:-./data/claude-creds}:/host_claude:ro
+    expose:
+      - "8000"
+    networks: [ecocode_net]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      litellm:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  mock-upstream:
+    build:
+      context: ./mock-upstream
+      network: host
+    expose:
+      - "8080"
+    networks: [ecocode_net]
+    profiles: ["dev"]
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      network: host
+    command: sh -c "rm -rf /static/* /static/.[!.]* 2>/dev/null; cp -r /usr/share/nginx/html/. /static/ && echo 'frontend static synced'"
+    restart: "no"
+    volumes:
+      - frontend_static:/static
+    networks: [ecocode_net]
+
+  nginx:
+    build: ./nginx
+    ports:
+      - "${NGINX_HTTP_PORT:-8085}:80"
+      # - "443:443"   # فعال کنید و ./certs را mount کنید — nginx/nginx.conf بخش TLS را هم از کامنت خارج کنید
+    volumes:
+      - frontend_static:/usr/share/nginx/html
+      # - ./certs:/etc/nginx/certs:ro
+    networks: [ecocode_net]
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_completed_successfully

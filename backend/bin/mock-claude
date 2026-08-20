@@ -1,0 +1,115 @@
+#!/usr/bin/env python3
+"""Mock stand-in for the Claude Code CLI (`claude`), used when MOCK_CLI=1.
+
+Emits the same line-delimited stream-json contract the real CLI produces with
+`--output-format stream-json --verbose`, so app/cli_runner.py's parser is
+exercised for real. Also genuinely writes a sample file into cwd (the
+conversation's workspace directory) to exercise the workspace/file endpoints
+without needing any real credentials (TECH.md section 5.6).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import time
+import uuid
+
+
+def emit(obj: dict) -> None:
+    sys.stdout.write(json.dumps(obj, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("-p", dest="prompt", default="")
+    parser.add_argument("--output-format", dest="output_format", default="stream-json")
+    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--model", dest="model", default="mock-model")
+    parser.add_argument("--resume", dest="resume", default=None)
+    parser.add_argument("--allowedTools", dest="allowed_tools", default="")
+    parser.add_argument("--disallowedTools", dest="disallowed_tools", default="")
+    args, _unknown = parser.parse_known_args()
+
+    session_id = args.resume or f"mock-{uuid.uuid4().hex[:12]}"
+
+    emit(
+        {
+            "type": "system",
+            "subtype": "init",
+            "session_id": session_id,
+            "model": args.model,
+            "cwd": ".",
+            "tools": ["Read", "Write", "Edit", "Glob", "Grep"],
+        }
+    )
+    time.sleep(0.05)
+
+    chunks = [
+        "دریافت شد. ",
+        "در حال بررسی درخواست شما هستم. ",
+        "یک فایل نمونه برایتان می‌سازم.",
+    ]
+    for chunk in chunks:
+        emit(
+            {
+                "type": "assistant",
+                "message": {
+                    "id": f"msg_{uuid.uuid4().hex[:8]}",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": chunk}],
+                },
+            }
+        )
+        time.sleep(0.05)
+
+    filename = "mock-notes.txt"
+    try:
+        with open(filename, "w", encoding="utf-8") as fh:
+            fh.write(f"یادداشت نمونه ساخته‌شده توسط mock-claude برای: {args.prompt}\n")
+    except OSError as exc:  # pragma: no cover - defensive
+        sys.stderr.write(f"mock-claude: failed to write sample file: {exc}\n")
+
+    emit(
+        {
+            "type": "assistant",
+            "message": {
+                "id": f"msg_{uuid.uuid4().hex[:8]}",
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": f"toolu_{uuid.uuid4().hex[:8]}",
+                        "name": "Write",
+                        "input": {"file_path": filename, "content": "..."},
+                    }
+                ],
+            },
+        }
+    )
+    time.sleep(0.05)
+
+    emit(
+        {
+            "type": "result",
+            "subtype": "success",
+            "is_error": False,
+            "session_id": session_id,
+            "result": "".join(chunks),
+            "duration_ms": 150,
+            "num_turns": 1,
+            "total_cost_usd": 0.0,
+            "usage": {
+                "input_tokens": 1200,
+                "output_tokens": 350,
+                "cache_creation_input_tokens": 0,
+                "cache_read_input_tokens": 400,
+            },
+        }
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
