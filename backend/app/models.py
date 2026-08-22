@@ -17,6 +17,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, TIMESTAMP
 from sqlalchemy.dialects.postgresql import ENUM as PgEnum
@@ -47,10 +48,28 @@ class UpstreamMode(str, enum.Enum):
     apikey = "apikey"
 
 
+class MessageStatus(str, enum.Enum):
+    """اصلاحیهٔ ۲ / Issue A+C (TECH.md section 3)."""
+
+    complete = "complete"
+    streaming = "streaming"
+    failed = "failed"
+
+
+class ThinkingLevel(str, enum.Enum):
+    """اصلاحیهٔ ۲ / Issue D (TECH.md section 3, 5.7)."""
+
+    off = "off"
+    standard = "standard"
+    deep = "deep"
+
+
 user_role_enum = PgEnum(UserRole, name="user_role", create_type=False)
 auth_source_enum = PgEnum(AuthSource, name="auth_source", create_type=False)
 quota_period_enum = PgEnum(QuotaPeriod, name="quota_period", create_type=False)
 upstream_mode_enum = PgEnum(UpstreamMode, name="upstream_mode", create_type=False)
+message_status_enum = PgEnum(MessageStatus, name="message_status", create_type=False)
+thinking_level_enum = PgEnum(ThinkingLevel, name="thinking_level", create_type=False)
 
 
 class User(Base):
@@ -198,6 +217,10 @@ class Conversation(Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False, default="گفتگوی جدید")
     model_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("models.id"))
     cli_session_id: Mapped[str | None] = mapped_column(Text)
+    # Issue D: per-conversation default thinking level; each message may override it.
+    thinking_level: Mapped[ThinkingLevel] = mapped_column(
+        thinking_level_enum, nullable=False, default=ThinkingLevel.standard
+    )
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -219,15 +242,32 @@ class Message(Base):
         BigInteger, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[str] = mapped_column(String(20), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
     content_blocks: Mapped[dict | None] = mapped_column(JSONB)
+    # Issue A: assistant rows are created with status='streaming' the instant a turn
+    # is accepted; 'complete'/'failed' land at FINALIZE (TECH.md section 5.1).
+    status: Mapped[MessageStatus] = mapped_column(
+        message_status_enum, nullable=False, default=MessageStatus.complete
+    )
+    # Issue C: only populated for status='failed'; cleared on retry.
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    error_reason: Mapped[str | None] = mapped_column(Text)
+    # Issue D: the effective thinking level actually used for this turn (badge source).
+    thinking_level: Mapped[ThinkingLevel | None] = mapped_column(thinking_level_enum)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
 
-    __table_args__ = (Index("idx_msg_conv", "conversation_id", "created_at"),)
+    __table_args__ = (
+        Index("idx_msg_conv", "conversation_id", "created_at"),
+        Index(
+            "idx_msg_streaming",
+            "status",
+            postgresql_where=text("status = 'streaming'"),
+        ),
+    )
 
 
 class Attachment(Base):

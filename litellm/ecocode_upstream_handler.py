@@ -160,6 +160,10 @@ def _to_anthropic_body(model_name: str, messages: list[dict], optional_params: d
         body["system"] = system_text
     if optional_params.get("temperature") is not None:
         body["temperature"] = optional_params["temperature"]
+    # Issue D (TECH.md 5.2/8): forward the client's own `thinking` param unchanged —
+    # this surface owns its own thinking control, we neither inject nor strip it.
+    if optional_params.get("thinking") is not None:
+        body["thinking"] = optional_params["thinking"]
     return body
 
 

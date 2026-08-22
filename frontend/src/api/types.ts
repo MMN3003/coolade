@@ -14,6 +14,15 @@
  *    the parsed `…` app types to components.
  *  - POST /api/auth/login returns {ok:true} and sets the cookie; the user
  *    object comes from a follow-up GET /api/auth/me.
+ *
+ * ---------------------------------------------------------------------------
+ * اصلاحیهٔ ۲ (docs/TECH.md v1.2) — NOT YET reconciled against openapi.json.
+ * Dev1 is implementing the backend in parallel; docs/openapi.json on disk at
+ * the time this was written is still the v1.1 shape (no /stream, no /retry,
+ * no thinking_level, no generating flag). Everything below marked "اصلاحیهٔ ۲"
+ * is built directly against docs/TECH.md §5.3/§8 prose and MUST be reconciled
+ * (field names, exact event payloads) once Dev1 regenerates openapi.json.
+ * ---------------------------------------------------------------------------
  */
 
 // ---------- shared ----------
@@ -24,6 +33,15 @@ export type QuotaPeriod = 'daily' | 'weekly' | 'monthly';
 export type UpstreamMode = 'mock' | 'cli_creds' | 'apikey';
 export type Surface = 'web_chat' | 'api';
 export type MessageRole = 'user' | 'assistant';
+
+/** اصلاحیهٔ ۲ / Issue A — messages.status (TECH.md §3). */
+export type MessageStatus = 'complete' | 'streaming' | 'failed';
+
+/** اصلاحیهٔ ۲ / Issue D — thinking_level enum (TECH.md §3, §5.7). Order: off < standard < deep. */
+export type ThinkingLevel = 'off' | 'standard' | 'deep';
+
+/** اصلاحیهٔ ۲ / Issue B — auto_refresh state of the upstream TokenManager (TECH.md §4.1). */
+export type AutoRefreshState = 'active' | 'degraded' | 'failed';
 
 /** Decimal serialized as string on the wire, e.g. "0.00", "28.2660". */
 export type DecimalString = string;
@@ -74,6 +92,12 @@ export interface MeResponseWire {
   /** Model KEYS the user may use (bare strings, not objects). */
   allowed_models: string[];
   quota: QuotaSummaryWire | null;
+  /**
+   * اصلاحیهٔ ۲ / Issue D (TECH.md §8, §5.7): effective cap for this user
+   * (min of THINKING_MAX_LEVEL env + optional per-user/policy cap). The
+   * thinking-level picker must never offer a level above this.
+   */
+  max_thinking_level: ThinkingLevel;
 }
 
 export interface MeResponse extends Omit<MeResponseWire, 'quota'> {
@@ -88,6 +112,10 @@ export interface Conversation {
   model_key: string | null;
   created_at: string;
   updated_at: string;
+  /** اصلاحیهٔ ۲ / Issue A (TECH.md §5.1, §8): true iff a turn is active in the in-memory TurnRegistry. */
+  generating: boolean;
+  /** اصلاحیهٔ ۲ / Issue D — this conversation's sticky default thinking level. */
+  thinking_level: ThinkingLevel;
 }
 
 export interface Message {
@@ -97,6 +125,13 @@ export interface Message {
   /** e.g. {tool_uses: [...]} — structural CLI events; shape is backend-internal. */
   content_blocks?: Record<string, unknown> | null;
   created_at: string;
+  /** اصلاحیهٔ ۲ / Issue A — 'streaming' from the moment a turn is accepted until 'complete'/'failed'. */
+  status: MessageStatus;
+  /** اصلاحیهٔ ۲ / Issue C — only set when status='failed'. */
+  error_code?: string | null;
+  error_reason?: string | null;
+  /** اصلاحیهٔ ۲ / Issue D — effective thinking level used for this assistant turn; null/absent for user rows. */
+  thinking_level?: ThinkingLevel | null;
 }
 
 export interface ConversationDetail extends Conversation {
@@ -111,11 +146,29 @@ export interface CreateConversationRequest {
 export interface UpdateConversationRequest {
   title?: string;
   model_key?: string;
+  /** اصلاحیهٔ ۲ / Issue D — updates the conversation's sticky default (TECH.md §8, §9). */
+  thinking_level?: ThinkingLevel;
 }
 
-/** POST …/messages body — content only; attachments are implicit via upload. */
+/**
+ * POST …/messages body (اصلاحیهٔ ۲ / TECH.md §8). `thinking_level` is optional —
+ * omission means "use the conversation's current default".
+ */
 export interface SendMessageRequest {
   content: string;
+  thinking_level?: ThinkingLevel;
+}
+
+/**
+ * اصلاحیهٔ ۲ / Issue A: POST …/messages and POST …/retry now return 202, not
+ * an inline SSE stream (TECH.md §5.1, §8). The actual streamed reply is
+ * always consumed separately via GET …/stream.
+ */
+export interface SendMessageAccepted {
+  assistant_message_id: number;
+  generating: true;
+  /** Effective level for this turn (TECH.md §8's example includes it on the send response). */
+  thinking_level?: ThinkingLevel;
 }
 
 /** Response of POST /api/conversations/{id}/attachments. */
@@ -126,17 +179,19 @@ export interface AttachmentUploadResponse {
 }
 
 /**
- * SSE events streamed from POST /api/conversations/{id}/messages (§5.3).
- * Verified against backend/app/routers/conversations.py `_sse(...)` calls:
- *   start {conversation_id} · delta {text} · tool {name, summary}
- *   done {credits_used: DecimalString, files_changed: string[]} · error {message}
+ * اصلاحیهٔ ۲ — SSE events from GET /api/conversations/{id}/stream (TECH.md §5.3, §8).
+ * `POST …/messages` no longer streams inline; every send/retry is followed by
+ * opening this endpoint, which replays the whole turn's buffered events from
+ * the start (including `start`) and then follows live until `done`/`error`.
+ * When no turn is active it emits a single `idle` event and closes.
  */
 export type ChatStreamEvent =
   | { type: 'start'; conversation_id: number }
   | { type: 'delta'; text: string }
   | { type: 'tool'; name: string; summary: string }
-  | { type: 'done'; credits_used: DecimalString; files_changed: string[] }
-  | { type: 'error'; message: string; code?: string };
+  | { type: 'done'; credits_used: DecimalString; files_changed: string[]; thinking_level?: ThinkingLevel }
+  | { type: 'error'; message: string; code?: string }
+  | { type: 'idle' };
 
 // ---------- workspace files (F4.6) ----------
 
@@ -393,6 +448,13 @@ export interface AuditLogQuery {
 
 // ---------- admin: upstream connection ----------
 
+/** اصلاحیهٔ ۲ / Issue B (TECH.md §4.1) — result of the most recent auto-refresh attempt. */
+export interface LastRefreshInfo {
+  at: string | null;
+  ok: boolean | null;
+  error: string | null;
+}
+
 export interface UpstreamStatus {
   mode: UpstreamMode;
   connected: boolean;
@@ -403,6 +465,16 @@ export interface UpstreamStatus {
   base_url: string;
   last_synced: string | null;
   last_checked: string;
+  /**
+   * اصلاحیهٔ ۲ / Issue B — new fields per TECH.md §4.1's revised
+   * GET /api/admin/upstream/status example. `refresh_token_valid_until` is
+   * null on most upstreams (they don't report refresh-token expiry) → UI
+   * shows «نامشخص». `auto_refresh` drives the conditional CTA (§9): only
+   * show «claude login روی سرور» when 'degraded' or 'failed'.
+   */
+  refresh_token_valid_until: string | null;
+  last_refresh: LastRefreshInfo | null;
+  auto_refresh: AutoRefreshState;
 }
 
 export interface SetApiKeyRequest {

@@ -35,9 +35,13 @@ class MeResponse(BaseModel):
     auth_source: str
     allowed_models: list[str]
     quota: MeQuotaSummary | None
+    max_thinking_level: str  # Issue D — caps the web chat thinking-level picker
 
 
 # ---------- Conversations ----------
+ThinkingLevelLiteral = Literal["off", "standard", "deep"]
+
+
 class ConversationCreate(BaseModel):
     title: str | None = None
     model_key: str
@@ -46,12 +50,15 @@ class ConversationCreate(BaseModel):
 class ConversationUpdate(BaseModel):
     title: str | None = None
     model_key: str | None = None
+    thinking_level: ThinkingLevelLiteral | None = None  # Issue D — per-conversation default
 
 
 class ConversationOut(ORMModel):
     id: int
     title: str
     model_key: str | None = None
+    thinking_level: str
+    generating: bool  # Issue A — sidebar spinner source (id in TurnRegistry)
     created_at: datetime.datetime
     updated_at: datetime.datetime
 
@@ -61,6 +68,10 @@ class MessageOut(ORMModel):
     role: str
     content: str
     content_blocks: dict | None = None
+    status: str  # Issue A/C — complete | streaming | failed
+    error_code: str | None = None
+    error_reason: str | None = None
+    thinking_level: str | None = None  # Issue D — effective level used (badge source)
     created_at: datetime.datetime
 
 
@@ -70,6 +81,15 @@ class ConversationDetailOut(ConversationOut):
 
 class SendMessageRequest(BaseModel):
     content: str
+    thinking_level: ThinkingLevelLiteral | None = None  # Issue D — optional override, sticky
+
+
+class TurnAcceptedOut(BaseModel):
+    """202 body for POST messages and POST .../retry (Issue A/C)."""
+
+    assistant_message_id: int
+    generating: bool = True
+    thinking_level: str
 
 
 # ---------- API keys ----------
@@ -233,11 +253,21 @@ class AuditLogOut(BaseModel):
 
 
 # ---------- Admin: upstream ----------
+class LastRefreshOut(BaseModel):
+    at: str
+    ok: bool
+    error: str | None = None
+
+
 class UpstreamStatusOut(BaseModel):
     mode: str
     connected: bool
     expires_at: datetime.datetime | None = None
+    # Issue B: most upstream services don't report refresh-token expiry — null/"نامشخص" in UI.
+    refresh_token_valid_until: datetime.datetime | None = None
     expiring_soon: bool = False
+    last_refresh: LastRefreshOut | None = None
+    auto_refresh: Literal["active", "degraded", "failed"] | None = None
     creds_source: str | None = None
     base_url: str
     last_synced: datetime.datetime | None = None

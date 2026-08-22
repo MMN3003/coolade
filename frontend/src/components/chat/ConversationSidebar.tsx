@@ -16,6 +16,8 @@ import DialogContentText from '@mui/material/DialogContentText';
 import DialogActions from '@mui/material/DialogActions';
 import Divider from '@mui/material/Divider';
 import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import Tooltip from '@mui/material/Tooltip';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/EditOutlined';
@@ -45,6 +47,12 @@ export default function ConversationSidebar({ activeId }: { activeId?: number })
   const listQuery = useQuery({
     queryKey: ['conversations', debouncedSearch],
     queryFn: () => conversationsApi.list(debouncedSearch || undefined),
+    // اصلاحیهٔ ۲ / Issue A (TECH.md §9): the sidebar spinner is normally kept
+    // fresh by invalidation after a stream's `done`/`idle`/`error`, but a
+    // *different* tab/session generating in a conversation we're not viewing
+    // wouldn't otherwise notify us — light polling while anything is
+    // generating catches that case without polling when idle.
+    refetchInterval: (query) => (query.state.data?.some((c) => c.generating) ? 10_000 : false),
   });
 
   const renameMutation = useMutation({
@@ -153,6 +161,11 @@ export default function ConversationSidebar({ activeId }: { activeId?: number })
                   </Box>
                 ) : (
                   <>
+                    {conv.generating && (
+                      <Tooltip title={t('chat.generating')}>
+                        <CircularProgress size={14} sx={{ mt: 0.5, flexShrink: 0 }} />
+                      </Tooltip>
+                    )}
                     <ListItemText
                       primary={conv.title}
                       primaryTypographyProps={{ noWrap: true, variant: 'body2' }}

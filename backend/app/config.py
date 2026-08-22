@@ -13,6 +13,13 @@ class Settings(BaseSettings):
     upstream_mode: str = "mock"  # mock | cli_creds | apikey
     upstream_base_url: str = "https://claude-compat.example.com"
 
+    # --- OAuth refresh (Issue B, TECH.md 4.1) ---
+    upstream_oauth_token_url: str = ""  # empty -> default f"{upstream_base_url}/v1/oauth/token"
+    upstream_oauth_client_id: str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"  # Claude Code's own client_id
+
+    # --- thinking level (Issue D, TECH.md 5.7) ---
+    thinking_max_level: str = "deep"  # global cap: off | standard | deep
+
     ecocode_secret_key: str = "0" * 44  # Fernet key (base64, 32 bytes) - override in prod
     session_secret: str = "dev-insecure-session-secret-change-me"
 

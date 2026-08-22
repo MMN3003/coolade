@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
+import logging
 import mimetypes
 import os
 import re
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
@@ -13,24 +16,27 @@ from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app import cli_runner
+from app import cli_runner, turn_registry
 from app.config import get_settings
 from app.db import async_session_factory
 from app.deps import client_ip, get_current_user, get_db
 from app.errors import AppError, bad_request, forbidden, model_not_allowed, not_found
-from app.models import Attachment, Conversation, Message, Model, ModelPolicy, User
+from app.models import Attachment, Conversation, Message, MessageStatus, Model, ModelPolicy, ThinkingLevel, User
 from app.schemas import (
     ConversationCreate,
     ConversationDetailOut,
     ConversationOut,
     ConversationUpdate,
     SendMessageRequest,
+    TurnAcceptedOut,
 )
-from app.services import ledger
+from app.services import ledger, thinking as thinking_service
 from app.services.quota import check_quota
+from app.turn_registry import TurnState
 
 router = APIRouter(prefix="/api", tags=["conversations"])
 settings = get_settings()
+logger = logging.getLogger("ecocode.conversations")
 
 
 def _sse(event: str, data: dict) -> bytes:
@@ -49,6 +55,8 @@ def _conv_to_out(conv: Conversation, model_key: str | None) -> ConversationOut:
         id=conv.id,
         title=conv.title,
         model_key=model_key,
+        thinking_level=getattr(conv.thinking_level, "value", conv.thinking_level),
+        generating=turn_registry.registry.is_generating(conv.id),
         created_at=conv.created_at,
         updated_at=conv.updated_at,
     )
@@ -146,6 +154,8 @@ async def update_conversation(
         if conv.model_id:
             m = await db.get(Model, conv.model_id)
             model_key = m.model_key if m else None
+    if body.thinking_level is not None:
+        conv.thinking_level = ThinkingLevel(body.thinking_level)
     conv.updated_at = datetime.datetime.now(datetime.timezone.utc)
     await db.commit()
     await db.refresh(conv)
@@ -164,14 +174,136 @@ async def delete_conversation(
     return {"ok": True}
 
 
-@router.post("/conversations/{conversation_id}/messages")
+async def _run_turn_background(
+    *,
+    conversation_id: int,
+    assistant_message_id: int,
+    user_id: int,
+    prompt: str,
+    upstream_model: str,
+    model_id: int,
+    resume_session_id: str | None,
+    thinking_level: ThinkingLevel,
+    state: TurnState,
+) -> None:
+    """Issue A: runs a full CLI turn to completion in the background, independent of
+    any client connection. Always persists the final result (or a failure) — even if
+    every SSE reader disconnects mid-stream, this coroutine keeps running to FINALIZE.
+    """
+    assistant_text_parts: list[str] = []
+    content_blocks: list[dict] = []
+    files_changed: list[str] = []
+    session_id_captured: str | None = None
+    error_code: str | None = None
+    error_reason: str | None = None
+    success = False
+    try:
+        async for ev in cli_runner.run_conversation_turn(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            prompt=prompt,
+            upstream_model=upstream_model,
+            resume_session_id=resume_session_id,
+            thinking_level=thinking_level,
+        ):
+            etype = ev["event"]
+            if etype == "start":
+                session_id_captured = ev.get("session_id")
+                await state.append({"event": "start", "data": {"conversation_id": conversation_id}})
+            elif etype == "delta":
+                assistant_text_parts.append(ev["text"])
+                await state.append({"event": "delta", "data": {"text": ev["text"]}})
+            elif etype == "tool":
+                content_blocks.append(
+                    {
+                        "type": "tool_use",
+                        "name": ev["name"],
+                        "summary": ev["summary"],
+                        "file_path": ev.get("file_path"),
+                    }
+                )
+                await state.append({"event": "tool", "data": {"name": ev["name"], "summary": ev["summary"]}})
+            elif etype == "done":
+                usage = ev["usage"]
+                files_changed = ev.get("files_changed") or []
+                async with async_session_factory() as sdb:
+                    m = await sdb.get(Model, model_id)
+                    entry = await ledger.record_usage(
+                        sdb,
+                        user_id=user_id,
+                        model=m,
+                        surface="web_chat",
+                        input_tokens=usage["input_tokens"],
+                        output_tokens=usage["output_tokens"],
+                        cache_read_tokens=usage["cache_read_tokens"],
+                        cache_write_tokens=usage["cache_write_tokens"],
+                        request_id=ev.get("session_id") or session_id_captured,
+                    )
+                    final_text = ev.get("result_text") or "".join(assistant_text_parts)
+                    msg = await sdb.get(Message, assistant_message_id)
+                    if msg is not None:
+                        msg.content = final_text
+                        msg.content_blocks = {"tool_uses": content_blocks} if content_blocks else None
+                        msg.status = MessageStatus.complete
+                        msg.error_code = None
+                        msg.error_reason = None
+                    conv_row = await sdb.get(Conversation, conversation_id)
+                    if conv_row:
+                        sid = ev.get("session_id") or session_id_captured
+                        # Persist also when it CHANGED: the runner may have rebuilt the
+                        # session after a stale --resume (CLI session state lost) — the
+                        # new id must replace the dead one or every later turn would
+                        # re-trigger the fallback.
+                        if sid and sid != conv_row.cli_session_id:
+                            conv_row.cli_session_id = sid
+                        conv_row.updated_at = datetime.datetime.now(datetime.timezone.utc)
+                    credits_used = str(entry.credits)
+                    await sdb.commit()
+                success = True
+                await state.append(
+                    {
+                        "event": "done",
+                        "data": {
+                            "credits_used": credits_used,
+                            "files_changed": list(dict.fromkeys(files_changed)),
+                            "thinking_level": ev.get("thinking_level") or thinking_level.value,
+                        },
+                    }
+                )
+            elif etype == "error":
+                error_code = ev.get("code") or "cli_error"
+                error_reason = ev.get("message") or "اجرای دستیار با خطا مواجه شد."
+                await state.append({"event": "error", "data": {"message": error_reason}})
+    except Exception:
+        logger.exception("turn crashed unexpectedly: conversation_id=%s", conversation_id)
+        error_code = error_code or "cli_error"
+        error_reason = error_reason or "خطای غیرمنتظره‌ای در اجرای دستیار رخ داد."
+        try:
+            await state.append({"event": "error", "data": {"message": error_reason}})
+        except Exception:  # pragma: no cover - defensive, must not crash the finally block
+            pass
+    finally:
+        if not success:
+            async with async_session_factory() as sdb:
+                msg = await sdb.get(Message, assistant_message_id)
+                if msg is not None and msg.status == MessageStatus.streaming:
+                    msg.status = MessageStatus.failed
+                    msg.error_code = error_code or "cli_error"
+                    msg.error_reason = error_reason or "اجرای دستیار با خطا مواجه شد."
+                    await sdb.commit()
+        await state.mark_done()
+        turn_registry.registry.finish(conversation_id, state)
+        cli_runner.release_conversation(conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/messages", response_model=TurnAcceptedOut, status_code=202)
 async def send_message(
     conversation_id: int,
     body: SendMessageRequest,
     user: User = Depends(get_current_user),
     ip: str = Depends(client_ip),
     db: AsyncSession = Depends(get_db),
-) -> StreamingResponse:
+) -> TurnAcceptedOut:
     conv = await _get_owned_conversation(db, user, conversation_id)
     if not conv.model_id:
         raise bad_request("ابتدا مدلی برای این گفتگو انتخاب کنید.")
@@ -189,98 +321,178 @@ async def send_message(
     if not cli_runner.try_acquire_conversation(conv.id):
         raise AppError(409, "chat_busy", "پاسخ قبلی در این گفتگو هنوز در حال پردازش است.")
 
-    user_msg = Message(conversation_id=conv.id, role="user", content=body.content)
+    requested_level = ThinkingLevel(body.thinking_level) if body.thinking_level else None
+    effective_level = thinking_service.effective_level(requested_level, conv.thinking_level)
+
+    user_msg = Message(conversation_id=conv.id, role="user", content=body.content, status=MessageStatus.complete)
+    assistant_msg = Message(
+        conversation_id=conv.id,
+        role="assistant",
+        content="",
+        status=MessageStatus.streaming,
+        thinking_level=effective_level,
+    )
     db.add(user_msg)
+    db.add(assistant_msg)
+    if requested_level is not None and effective_level != conv.thinking_level:
+        # Sticky default (TECH.md 5.7): the level actually used becomes the new
+        # conversation default, not merely what the user asked for (which may have
+        # been capped).
+        conv.thinking_level = effective_level
     conv.updated_at = datetime.datetime.now(datetime.timezone.utc)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        cli_runner.release_conversation(conv.id)
+        raise
+    await db.refresh(assistant_msg)
 
-    resume_sid = conv.cli_session_id
-    upstream_model = model.upstream_model
-    model_id = model.id
-    conv_id = conv.id
-    user_id = user.id
+    state = turn_registry.registry.start(conv.id, assistant_msg.id)
+    asyncio.create_task(
+        _run_turn_background(
+            conversation_id=conv.id,
+            assistant_message_id=assistant_msg.id,
+            user_id=user.id,
+            prompt=body.content,
+            upstream_model=model.upstream_model,
+            model_id=model.id,
+            resume_session_id=conv.cli_session_id,
+            thinking_level=effective_level,
+            state=state,
+        )
+    )
+    return TurnAcceptedOut(assistant_message_id=assistant_msg.id, generating=True, thinking_level=effective_level.value)
 
-    async def event_stream():
-        assistant_text_parts: list[str] = []
-        content_blocks: list[dict] = []
-        files_changed: list[str] = []
-        session_id_captured: str | None = None
-        try:
-            async for ev in cli_runner.run_conversation_turn(
-                user_id=user_id,
-                conversation_id=conv_id,
-                prompt=body.content,
-                upstream_model=upstream_model,
-                resume_session_id=resume_sid,
-            ):
-                etype = ev["event"]
-                if etype == "start":
-                    session_id_captured = ev.get("session_id")
-                    yield _sse("start", {"conversation_id": conv_id})
-                elif etype == "delta":
-                    assistant_text_parts.append(ev["text"])
-                    yield _sse("delta", {"text": ev["text"]})
-                elif etype == "tool":
-                    content_blocks.append(
-                        {
-                            "type": "tool_use",
-                            "name": ev["name"],
-                            "summary": ev["summary"],
-                            "file_path": ev.get("file_path"),
-                        }
-                    )
-                    if ev.get("file_path"):
-                        files_changed.append(ev["file_path"])
-                    yield _sse("tool", {"name": ev["name"], "summary": ev["summary"]})
-                elif etype == "done":
-                    usage = ev["usage"]
-                    async with async_session_factory() as sdb:
-                        m = await sdb.get(Model, model_id)
-                        entry = await ledger.record_usage(
-                            sdb,
-                            user_id=user_id,
-                            model=m,
-                            surface="web_chat",
-                            input_tokens=usage["input_tokens"],
-                            output_tokens=usage["output_tokens"],
-                            cache_read_tokens=usage["cache_read_tokens"],
-                            cache_write_tokens=usage["cache_write_tokens"],
-                            request_id=ev.get("session_id") or session_id_captured,
-                        )
-                        final_text = ev.get("result_text") or "".join(assistant_text_parts)
-                        assistant_msg = Message(
-                            conversation_id=conv_id,
-                            role="assistant",
-                            content=final_text,
-                            content_blocks={"tool_uses": content_blocks} if content_blocks else None,
-                        )
-                        sdb.add(assistant_msg)
-                        conv_row = await sdb.get(Conversation, conv_id)
-                        if conv_row:
-                            sid = ev.get("session_id") or session_id_captured
-                            # Persist also when it CHANGED: the runner may have
-                            # rebuilt the session after a stale --resume (CLI
-                            # session state lost) — the new id must replace the
-                            # dead one or every later turn would re-trigger the
-                            # fallback.
-                            if sid and sid != conv_row.cli_session_id:
-                                conv_row.cli_session_id = sid
-                            conv_row.updated_at = datetime.datetime.now(datetime.timezone.utc)
-                        credits_used = str(entry.credits)
-                        await sdb.commit()
-                    yield _sse(
-                        "done",
-                        {
-                            "credits_used": credits_used,
-                            "files_changed": list(dict.fromkeys(files_changed)),
-                        },
-                    )
-                elif etype == "error":
-                    yield _sse("error", {"message": ev.get("message", "خطای نامشخص رخ داد.")})
-        finally:
-            cli_runner.release_conversation(conv_id)
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+@router.get("/conversations/{conversation_id}/stream")
+async def stream_conversation(
+    conversation_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """Issue A reattach protocol (TECH.md 5.1/5.3): if a turn is active, replay every
+    buffered event from index 0 then keep following live until the terminal event; if
+    no turn is active, emit a single `idle` event and close. Idempotent — any number of
+    clients, any number of times, from any tab."""
+    await _get_owned_conversation(db, user, conversation_id)
+    state = turn_registry.registry.get(conversation_id)
+
+    async def gen() -> AsyncIterator[bytes]:
+        if state is None:
+            yield _sse("idle", {})
+            return
+        idx = 0
+        while True:
+            async with state.condition:
+                while idx >= len(state.events) and not state.done:
+                    await state.condition.wait()
+                batch = state.events[idx:]
+                idx = len(state.events)
+                finished = state.done and idx >= len(state.events)
+            for ev in batch:
+                yield _sse(ev["event"], ev["data"])
+            if finished:
+                break
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/retry",
+    response_model=TurnAcceptedOut,
+    status_code=202,
+)
+async def retry_message(
+    conversation_id: int,
+    message_id: int,
+    user: User = Depends(get_current_user),
+    ip: str = Depends(client_ip),
+    db: AsyncSession = Depends(get_db),
+) -> TurnAcceptedOut:
+    """Issue C (TECH.md 5.1): retries the failed turn IN PLACE — same assistant row,
+    same id, reset to streaming — rather than creating a new message row."""
+    conv = await _get_owned_conversation(db, user, conversation_id)
+
+    # Ordered/filtered by id (monotonic BIGSERIAL), not created_at: the user+assistant
+    # pair from POST messages is inserted in the same transaction and share the exact
+    # same server-side now() value, so created_at alone can't disambiguate their order.
+    last_msg_result = await db.execute(
+        select(Message).where(Message.conversation_id == conv.id).order_by(Message.id.desc()).limit(1)
+    )
+    last_msg = last_msg_result.scalar_one_or_none()
+    target = await db.get(Message, message_id)
+    if (
+        target is None
+        or target.conversation_id != conv.id
+        or target.role != "assistant"
+        or target.status != MessageStatus.failed
+        or last_msg is None
+        or last_msg.id != target.id
+    ):
+        raise AppError(409, "not_retryable", "این پیام قابل تلاش مجدد نیست.")
+
+    prior_user_msg_result = await db.execute(
+        select(Message)
+        .where(
+            Message.conversation_id == conv.id,
+            Message.role == "user",
+            Message.id < target.id,
+        )
+        .order_by(Message.id.desc())
+        .limit(1)
+    )
+    prior_user_msg = prior_user_msg_result.scalar_one_or_none()
+    if prior_user_msg is None:
+        raise AppError(409, "not_retryable", "پیام کاربر مرتبط با این نوبت یافت نشد.")
+
+    if not conv.model_id:
+        raise bad_request("ابتدا مدلی برای این گفتگو انتخاب کنید.")
+    model = await db.get(Model, conv.model_id)
+    if not model or not model.is_enabled:
+        raise model_not_allowed()
+    policy = await db.execute(
+        select(ModelPolicy).where(ModelPolicy.user_id == user.id, ModelPolicy.model_id == model.id)
+    )
+    if policy.scalar_one_or_none() is None:
+        raise model_not_allowed("این مدل برای شما مجاز نیست.")
+
+    await check_quota(db, user_id=user.id, ip_address=ip)
+
+    # Concurrency gate (also serializes a duplicate/concurrent retry -> 409 chat_busy,
+    # TECH.md's "idempotency" guarantee for this endpoint).
+    if not cli_runner.try_acquire_conversation(conv.id):
+        raise AppError(409, "chat_busy", "پاسخ قبلی در این گفتگو هنوز در حال پردازش است.")
+
+    effective_level = target.thinking_level or conv.thinking_level
+
+    # Supersede-in-place: reset the SAME row rather than delete/recreate it.
+    target.status = MessageStatus.streaming
+    target.content = ""
+    target.content_blocks = None
+    target.error_code = None
+    target.error_reason = None
+    conv.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    try:
+        await db.commit()
+    except Exception:
+        cli_runner.release_conversation(conv.id)
+        raise
+
+    state = turn_registry.registry.start(conv.id, target.id)
+    asyncio.create_task(
+        _run_turn_background(
+            conversation_id=conv.id,
+            assistant_message_id=target.id,
+            user_id=user.id,
+            prompt=prior_user_msg.content,
+            upstream_model=model.upstream_model,
+            model_id=model.id,
+            resume_session_id=conv.cli_session_id,
+            thinking_level=effective_level,
+            state=state,
+        )
+    )
+    return TurnAcceptedOut(assistant_message_id=target.id, generating=True, thinking_level=effective_level.value)
 
 
 _SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._\-]+")

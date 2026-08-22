@@ -28,6 +28,8 @@ import type {
   OkResponse,
   QuotaSummary,
   QuotaSummaryWire,
+  SendMessageAccepted,
+  SendMessageRequest,
   SetApiKeyRequest,
   SetModeRequest,
   SetPolicyRequest,
@@ -125,6 +127,23 @@ export const conversationsApi = {
   update: (id: number, body: UpdateConversationRequest) =>
     api.patch<Conversation>(`/api/conversations/${id}`, body),
   remove: (id: number) => api.delete<Record<string, unknown>>(`/api/conversations/${id}`),
+  /**
+   * اصلاحیهٔ ۲ / Issue A (TECH.md §5.1, §8): accepts the turn synchronously
+   * (401/403/409 chat_busy/429 before returning) and responds 202 — no SSE
+   * body anymore. The caller must follow up with `GET …/stream` (see
+   * `api/sse.ts#openConversationStream`) to actually see the reply.
+   */
+  sendMessage: (id: number, body: SendMessageRequest) =>
+    api.post<SendMessageAccepted>(`/api/conversations/${id}/messages`, body),
+  /**
+   * اصلاحیهٔ ۲ / Issue C (TECH.md §5.1, §8): only valid on the latest message
+   * when status='failed'. Reuses the same message row (reset to 'streaming')
+   * — the returned `assistant_message_id` is the same id that was failed.
+   * 409 `not_retryable` (not latest / not failed) or `chat_busy` (concurrent
+   * retry) — both carry a Persian `error.message` per the uniform envelope.
+   */
+  retryMessage: (id: number, messageId: number) =>
+    api.post<SendMessageAccepted>(`/api/conversations/${id}/messages/${messageId}/retry`),
   uploadAttachment: async (conversationId: number, file: File): Promise<AttachmentUploadResponse> => {
     const form = new FormData();
     form.append('file', file);

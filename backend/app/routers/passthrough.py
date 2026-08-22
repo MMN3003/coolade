@@ -121,6 +121,22 @@ def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
         openai_body["max_tokens"] = body["max_tokens"]
     if "temperature" in body:
         openai_body["temperature"] = body["temperature"]
+    # Issue D (asymmetric vs. web chat, TECH.md 5.2): the API-key surface owns its own
+    # thinking control — the client's `thinking` field (Anthropic shape, e.g.
+    # {"type":"enabled","budget_tokens":N}) is forwarded UNCHANGED. We never inject it
+    # on the chat's behalf here, and never strip it either.
+    #
+    # `allowed_openai_params` is required alongside it: our litellm_config.yaml keeps
+    # `drop_params: true` gateway-wide (a real safety net — unrelated unsupported
+    # params from arbitrary tools should be dropped, not 400 the whole request), and
+    # litellm doesn't know our custom "ecocode-upstream" provider supports `thinking`
+    # at all, so without this per-request opt-in it either silently drops the field
+    # (drop_params: true) or raises UnsupportedParamsError (drop_params: false) —
+    # confirmed against the live litellm proxy while implementing this. This is the
+    # officially documented per-request escape hatch, not a global relaxation.
+    if "thinking" in body:
+        openai_body["thinking"] = body["thinking"]
+        openai_body["allowed_openai_params"] = ["thinking"]
     return openai_body
 
 

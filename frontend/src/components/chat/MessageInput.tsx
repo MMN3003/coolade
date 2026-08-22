@@ -85,7 +85,7 @@ export default function MessageInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
         />
-        <Tooltip title={t('chat.send')}>
+        <Tooltip title={sending ? t('chat.chatBusy') : t('chat.send')}>
           <span>
             <IconButton
               color="primary"

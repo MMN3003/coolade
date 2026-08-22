@@ -1,31 +1,42 @@
 import type { ChatStreamEvent } from './types';
 
 /**
- * SSE streaming via fetch + ReadableStream, per TECH.md v1.1 §5/§8.
+ * SSE streaming via fetch + ReadableStream, per docs/TECH.md v1.2 §5.3/§8/§9
+ * (اصلاحیهٔ ۲ / Issue A).
  *
- * We can't use `EventSource` because it only supports GET; the chat send
- * endpoint is a POST that streams the response body as `text/event-stream`.
+ * We can't use `EventSource` because in the general case we also need to
+ * distinguish a pre-stream JSON error body from an actual event stream, and
+ * historically this project's send call was a POST; keeping the same
+ * hand-rolled parser for the new GET stream keeps both paths consistent.
  *
- * Protocol (§5.3): the backend runs a Claude Code CLI session and translates
- * its stream-json output into named SSE events:
+ * Protocol (§5.3): `GET /api/conversations/{id}/stream` is the ONLY way the
+ * browser ever consumes a turn's output now. `POST …/messages` and
+ * `POST …/retry` are plain JSON calls that return 202 immediately — see
+ * `conversationsApi.sendMessage` / `retryMessage` in `./endpoints`. Opening
+ * this stream:
+ *   - if a turn is active: replays the whole in-memory ring buffer from the
+ *     first event (including `start`), then follows live until `done`/`error`.
+ *     Reattach is idempotent and works from any tab, any number of times.
+ *   - if no turn is active: emits a single `event: idle` and closes — the
+ *     caller already has the persisted messages from `GET /conversations/{id}`.
  *
  *   event: start   data: {"conversation_id": 12}
  *   event: delta   data: {"text": "..."}
  *   event: tool    data: {"name": "Write", "summary": "..."}
- *   event: done    data: {"credits_used": 12.5, "files_changed": ["report.md"]}
- *   event: error   data: {"message": "پیام فارسی"}
+ *   event: done    data: {"credits_used": "12.5", "files_changed": ["report.md"], "thinking_level": "standard"}
+ *   event: error   data: {"message": "پیام فارسی", "code": "cli_error"}
+ *   event: idle    data: {}
  *
  * We parse the wire format by hand: events are separated by a blank line, each
  * event has an `event:` line and one or more `data:` lines with a JSON payload.
  */
 
-export interface StreamChatParams {
+export interface OpenStreamParams {
   conversationId: number;
-  content: string;
   signal?: AbortSignal;
 }
 
-const KNOWN_EVENTS = new Set(['start', 'delta', 'tool', 'done', 'error']);
+const KNOWN_EVENTS = new Set(['start', 'delta', 'tool', 'done', 'error', 'idle']);
 
 function parseSseBlock(block: string): { event?: string; data: string } | null {
   const lines = block.split('\n');
@@ -35,31 +46,31 @@ function parseSseBlock(block: string): { event?: string; data: string } | null {
     if (line.startsWith('event:')) event = line.slice(6).trim();
     else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
   }
-  if (dataLines.length === 0) return null;
-  return { event, data: dataLines.join('\n') };
+  if (dataLines.length === 0 && !event) return null;
+  return { event, data: dataLines.join('\n') || '{}' };
 }
 
-export async function* streamChatMessage(
-  params: StreamChatParams
+/**
+ * Opens (or reattaches to) the SSE stream for a conversation's current turn.
+ * Safe to call repeatedly / from multiple mounts — the backend buffer is
+ * replayed from the start each time, so there is no "missed the beginning"
+ * failure mode when reattaching after navigating away and back.
+ */
+export async function* openConversationStream(
+  params: OpenStreamParams
 ): AsyncGenerator<ChatStreamEvent, void, unknown> {
-  const res = await fetch(`/api/conversations/${params.conversationId}/messages`, {
-    method: 'POST',
+  const res = await fetch(`/api/conversations/${params.conversationId}/stream`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
-      'X-Requested-With': 'XMLHttpRequest',
       Accept: 'text/event-stream',
+      'X-Requested-With': 'XMLHttpRequest',
     },
-    // SendMessageRequest per openapi.json: {content} only — uploaded attachments
-    // are already in the user's workspace and picked up by the CLI session.
-    body: JSON.stringify({ content: params.content }),
     credentials: 'same-origin',
     signal: params.signal,
   });
 
   if (!res.ok || !res.body) {
-    // Pre-stream failure: the uniform error envelope {error:{code,message}}
-    // (e.g. 429 quota_exceeded, 409 chat_busy, 403 model_not_allowed).
-    let message = 'ارسال پیام ناموفق بود.';
+    let message = 'اتصال به استریم پاسخ ناموفق بود.';
     let code: string | undefined = 'stream_error';
     try {
       const body = await res.json();

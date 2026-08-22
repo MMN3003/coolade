@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 import uuid
@@ -71,6 +72,7 @@ def main() -> int:
     except OSError as exc:  # pragma: no cover - defensive
         sys.stderr.write(f"mock-claude: failed to write sample file: {exc}\n")
 
+    write_tool_id = f"toolu_{uuid.uuid4().hex[:8]}"
     emit(
         {
             "type": "assistant",
@@ -80,7 +82,7 @@ def main() -> int:
                 "content": [
                     {
                         "type": "tool_use",
-                        "id": f"toolu_{uuid.uuid4().hex[:8]}",
+                        "id": write_tool_id,
                         "name": "Write",
                         "input": {"file_path": filename, "content": "..."},
                     }
@@ -89,6 +91,38 @@ def main() -> int:
         }
     )
     time.sleep(0.05)
+
+    # tool_result confirming the write succeeded — app/cli_runner.py only adds a
+    # Write/Edit path to `files_changed` once it sees a non-error tool_result for it
+    # (the folded-in fix: a denied/out-of-workspace write must never appear there).
+    emit(
+        {
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": write_tool_id,
+                        "is_error": False,
+                        "content": [{"type": "text", "text": "File written."}],
+                    }
+                ],
+            },
+        }
+    )
+    time.sleep(0.05)
+
+    # Issue D verification aid: reflect MAX_THINKING_TOKENS (set per-turn by
+    # app/cli_runner.py's _build_env) into a visibly larger output_tokens count, so
+    # the credit difference between thinking levels is observable end-to-end even
+    # against this mock (TECH.md section 5.6).
+    thinking_tokens_env = os.environ.get("MAX_THINKING_TOKENS")
+    base_output_tokens = 350
+    try:
+        base_output_tokens += int(thinking_tokens_env) if thinking_tokens_env else 0
+    except ValueError:
+        pass
 
     emit(
         {
@@ -102,7 +136,7 @@ def main() -> int:
             "total_cost_usd": 0.0,
             "usage": {
                 "input_tokens": 1200,
-                "output_tokens": 350,
+                "output_tokens": base_output_tokens,
                 "cache_creation_input_tokens": 0,
                 "cache_read_input_tokens": 400,
             },

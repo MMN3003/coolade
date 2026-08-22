@@ -19,11 +19,17 @@ import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
 
 /**
- * Admin upstream connection page — TECH.md v1.1 §4/§8/§9.
+ * Admin upstream connection page — TECH.md v1.2 §4.1/§8/§9 (اصلاحیهٔ ۲ / Issue B).
  * Modes: mock / cli_creds / apikey (the old OAuth flow was removed).
- * cli_creds is credential-less from the panel's perspective: the backend reuses
- * the Claude Code credentials already on the host; when they expire the fix is
- * `claude login` on the server, so we only show status + that guidance.
+ *
+ * cli_creds now OWNS its token lifecycle server-side (seed-once from the host
+ * file, then the backend refreshes itself before expiry) instead of relying
+ * on a human re-running `claude login` after every ~8h expiry. The panel's
+ * job changed accordingly: show the four status facts from the revised
+ * GET /api/admin/upstream/status (token valid-until, refresh-token
+ * valid-until — often unknown, last refresh attempt, auto_refresh state) and
+ * only surface the «claude login روی سرور» CTA when auto_refresh is actually
+ * stuck (`degraded`/`failed`) — normal operation asks nothing of the admin.
  */
 export default function AdminSettingsPage() {
   const { t } = useTranslation();
@@ -61,7 +67,18 @@ export default function AdminSettingsPage() {
   }
   const status = statusQuery.data!;
 
-  const isExpired = !status.connected && status.mode === 'cli_creds';
+  // اصلاحیهٔ ۲ / Issue B: the CTA is driven by auto_refresh, not `connected`
+  // alone — normal operation (auto refresh working) never prompts the admin.
+  const autoRefresh = status.auto_refresh;
+  const showLoginCta = autoRefresh === 'degraded' || autoRefresh === 'failed';
+  const autoRefreshColor: 'success' | 'warning' | 'error' =
+    autoRefresh === 'active' ? 'success' : autoRefresh === 'degraded' ? 'warning' : 'error';
+  const autoRefreshLabel =
+    autoRefresh === 'active'
+      ? t('admin.settings.autoRefreshActive')
+      : autoRefresh === 'degraded'
+        ? t('admin.settings.autoRefreshDegraded')
+        : t('admin.settings.autoRefreshFailed');
 
   return (
     <Box sx={{ p: 3, maxWidth: 800, mx: 'auto' }}>
@@ -75,34 +92,54 @@ export default function AdminSettingsPage() {
         </Typography>
         <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5, flexWrap: 'wrap', rowGap: 1 }}>
           <Chip
-            label={
-              status.connected
-                ? t('admin.settings.connected')
-                : isExpired
-                  ? t('admin.settings.expired')
-                  : t('admin.settings.disconnected')
-            }
+            label={status.connected ? t('admin.settings.connected') : t('admin.settings.disconnected')}
             color={status.connected ? 'success' : 'error'}
             size="small"
           />
           {status.expiring_soon && (
             <Chip label={t('admin.settings.expiringSoon')} color="warning" size="small" />
           )}
+          <Chip label={autoRefreshLabel} color={autoRefreshColor} size="small" variant="outlined" />
           <Chip label={status.mode} size="small" variant="outlined" sx={{ direction: 'ltr' }} />
         </Stack>
 
-        {isExpired && (
+        {showLoginCta && (
           <Alert severity="warning" sx={{ mb: 1.5 }}>
-            {t('admin.settings.cliCredsReconnect')}
+            {t('admin.settings.autoRefreshCta')}
           </Alert>
         )}
 
         <Stack spacing={0.5}>
-          {status.expires_at && (
-            <Typography variant="body2" color="text.secondary">
-              {t('admin.settings.expiresAt')}: {formatPersianDateTime(status.expires_at)}
-            </Typography>
-          )}
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.settings.expiresAt')}:{' '}
+            {status.expires_at ? formatPersianDateTime(status.expires_at) : t('admin.settings.unknownValue')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.settings.refreshTokenValidUntil')}:{' '}
+            {status.refresh_token_valid_until
+              ? formatPersianDateTime(status.refresh_token_valid_until)
+              : t('admin.settings.unknownValue')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('admin.settings.lastRefresh')}:{' '}
+            {status.last_refresh?.at ? (
+              <>
+                {formatPersianDateTime(status.last_refresh.at)} —{' '}
+                {status.last_refresh.ok ? (
+                  <Box component="span" sx={{ color: 'success.main' }}>
+                    {t('admin.settings.lastRefreshOk')}
+                  </Box>
+                ) : (
+                  <Box component="span" sx={{ color: 'error.main' }}>
+                    {t('admin.settings.lastRefreshFailed')}
+                    {status.last_refresh.error ? `: ${status.last_refresh.error}` : ''}
+                  </Box>
+                )}
+              </>
+            ) : (
+              t('admin.settings.unknownValue')
+            )}
+          </Typography>
           {status.base_url && (
             <Typography variant="body2" color="text.secondary">
               {t('admin.settings.baseUrl')}:{' '}

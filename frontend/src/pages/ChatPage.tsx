@@ -7,18 +7,32 @@ import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import { useTranslation } from 'react-i18next';
 import { conversationsApi } from '@/api/endpoints';
-import { streamChatMessage } from '@/api/sse';
-import type { AttachmentUploadResponse, Message } from '@/api/types';
+import { ApiError } from '@/api/client';
+import { useConversationStream, type ConversationStreamCallbacks } from '@/hooks/useConversationStream';
+import type { AttachmentUploadResponse, Message, ThinkingLevel } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 import { getErrorMessage } from '@/utils/errors';
 import ConversationSidebar from '@/components/chat/ConversationSidebar';
 import ModelPicker from '@/components/chat/ModelPicker';
+import ThinkingLevelPicker from '@/components/chat/ThinkingLevelPicker';
 import MessageList from '@/components/chat/MessageList';
 import MessageInput from '@/components/chat/MessageInput';
 import WorkspaceFilesPanel from '@/components/chat/WorkspaceFilesPanel';
 import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
 
+/**
+ * اصلاحیهٔ ۲ / Issue A+C+D (docs/TECH.md §5.1, §5.3, §5.7, §8, §9).
+ *
+ * Send/retry cycle: `POST messages`/`POST .../retry` are now plain 202
+ * acceptances (no inline SSE) — the reply is ALWAYS consumed via
+ * `GET .../stream` afterwards (`useConversationStream`, `api/sse.ts`).
+ * Opening a conversation that's already `generating` auto-attaches to the
+ * same stream, replaying from the start of the turn, so a reload or a tab
+ * switch never loses the in-progress reply. Switching to a DIFFERENT
+ * conversation only tears down the local reader — the backend turn for the
+ * conversation you left keeps running and can be reattached later.
+ */
 export default function ChatPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -26,8 +40,10 @@ export default function ChatPage() {
   const { conversationId: conversationIdParam } = useParams();
   const conversationId = conversationIdParam ? Number(conversationIdParam) : undefined;
 
-  // Bare model keys per the contract (/api/auth/me → allowed_models: string[]).
   const allowedModels = useAuthStore((s) => s.user?.allowed_models) ?? [];
+  // Issue D: cap from /api/auth/me. Falls back to 'standard' (the DB default)
+  // if the field isn't present yet — e.g. against a not-yet-upgraded backend.
+  const maxThinkingLevel: ThinkingLevel = useAuthStore((s) => s.user?.max_thinking_level) ?? 'standard';
 
   const conversationQuery = useQuery({
     queryKey: ['conversation', conversationId],
@@ -40,43 +56,102 @@ export default function ChatPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] }),
   });
 
+  // Issue D: selecting a level is sticky — persisted as the conversation's
+  // default via PATCH, and applied to the next message via the body field.
+  const updateThinkingLevelMutation = useMutation({
+    mutationFn: (level: ThinkingLevel) => conversationsApi.update(conversationId!, { thinking_level: level }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] }),
+  });
+
   const [newChatModelKey, setNewChatModelKey] = useState<string | null>(allowedModels[0] ?? null);
   useEffect(() => {
     if (!newChatModelKey && allowedModels.length > 0) setNewChatModelKey(allowedModels[0]);
   }, [allowedModels, newChatModelKey]);
 
+  const [newChatThinkingLevel, setNewChatThinkingLevel] = useState<ThinkingLevel>('standard');
+
   const selectedModelKey = conversationId ? conversationQuery.data?.model_key ?? null : newChatModelKey;
+  const selectedThinkingLevel: ThinkingLevel = conversationId
+    ? conversationQuery.data?.thinking_level ?? 'standard'
+    : newChatThinkingLevel;
 
   const [optimisticUserMessage, setOptimisticUserMessage] = useState<Message | null>(null);
-  const [streamingText, setStreamingText] = useState<string | null>(null);
-  const [isStreaming, setIsStreaming] = useState(false);
-  const [toolStatus, setToolStatus] = useState<string | null>(null);
-  const [streamError, setStreamError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [retryPendingId, setRetryPendingId] = useState<number | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentUploadResponse[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const stream = useConversationStream();
   const justCreatedIdRef = useRef<number | null>(null);
+  const autoAttachedForRef = useRef<number | null>(null);
 
+  // Finalize a turn (done/error/idle): refresh canonical messages + sidebar +
+  // quota, then drop the local live overlay. `stream.reset()` only tears down
+  // OUR reader; the turn itself is already finished server-side by this point.
+  async function finishTurn(invalidateFiles: boolean) {
+    if (conversationId) {
+      await queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
+      await queryClient.refetchQueries({ queryKey: ['conversation', conversationId] });
+    }
+    queryClient.invalidateQueries({ queryKey: ['conversations'] });
+    queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
+    if (invalidateFiles) queryClient.invalidateQueries({ queryKey: ['workspace', 'files'] });
+    setOptimisticUserMessage(null);
+    stream.reset();
+  }
+
+  const streamCallbacks: ConversationStreamCallbacks = {
+    onDone: () => finishTurn(true),
+    onError: (message) => {
+      // The failure is persisted server-side (status='failed' + error_reason)
+      // and will render as a retry-able bubble once we refetch; surface the
+      // raw message too so a pre-persistence failure (e.g. the /stream
+      // endpoint itself not existing yet on an un-upgraded backend) isn't silent.
+      setSendError(message);
+      return finishTurn(false);
+    },
+    onIdle: () => finishTurn(false),
+  };
+
+  // Conversation switch: tear down OUR reader only — the other conversation's
+  // turn (if any) keeps running server-side and can be reattached later.
   useEffect(() => {
     if (justCreatedIdRef.current === conversationId) {
       justCreatedIdRef.current = null;
       return;
     }
-    abortControllerRef.current?.abort();
-    setIsStreaming(false);
-    setStreamingText(null);
-    setToolStatus(null);
+    stream.reset();
     setOptimisticUserMessage(null);
     setPendingAttachments([]);
-    setStreamError(null);
+    setSendError(null);
+    setRetryPendingId(null);
+    autoAttachedForRef.current = null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
-  useEffect(() => () => abortControllerRef.current?.abort(), []);
+  useEffect(() => () => stream.stop(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Opening a conversation that's already generating: auto-attach and replay
+  // from the start of the turn (TECH.md §9 — "انگار هیچ‌وقت قطع نشده").
+  useEffect(() => {
+    if (!conversationId || !conversationQuery.data) return;
+    if (stream.state.assistantMessageId !== null) return; // already attached/attaching
+    if (autoAttachedForRef.current === conversationId) return; // already tried this navigation
+    const data = conversationQuery.data;
+    const lastMsg = data.messages[data.messages.length - 1];
+    const isGenerating = data.generating || (lastMsg?.role === 'assistant' && lastMsg.status === 'streaming');
+    if (isGenerating) {
+      autoAttachedForRef.current = conversationId;
+      stream.attach(conversationId, lastMsg?.role === 'assistant' ? lastMsg.id : null, streamCallbacks);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, conversationQuery.data]);
 
   const canonicalMessages = useMemo(() => conversationQuery.data?.messages ?? [], [conversationQuery.data]);
   const displayMessages = optimisticUserMessage ? [...canonicalMessages, optimisticUserMessage] : canonicalMessages;
+
+  const isBusy = stream.state.assistantMessageId !== null;
 
   async function ensureConversationId(): Promise<number | null> {
     if (conversationId) return conversationId;
@@ -103,8 +178,19 @@ export default function ChatPage() {
     }
   }
 
+  function toolStatusLabel(tool: { name: string; summary: string } | null): string | null {
+    if (!tool) return null;
+    const known: Record<string, string> = {
+      Write: t('chat.toolWrite'),
+      Edit: t('chat.toolEdit'),
+      Read: t('chat.toolRead'),
+    };
+    const base = known[tool.name] ?? t('chat.toolWorking', { name: tool.name });
+    return tool.summary ? `${base} ${tool.summary}` : base;
+  }
+
   async function handleSend(content: string) {
-    setStreamError(null);
+    setSendError(null);
     const id = await ensureConversationId();
     if (!id) return;
 
@@ -113,68 +199,53 @@ export default function ChatPage() {
       role: 'user',
       content,
       created_at: new Date().toISOString(),
+      status: 'complete',
     });
-    // Uploaded attachments are already in the workspace; the send body is
-    // {content} only per the contract — just clear the pending chips.
+    // Uploaded attachments are already in the workspace; the send body only
+    // needs {content, thinking_level?} per the contract — just clear the chips.
     setPendingAttachments([]);
-    setIsStreaming(true);
-    setStreamingText('');
-
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    // Map a CLI tool_use step (SSE `tool` event, §5.3) to a subtle Persian status line.
-    function toolStatusLabel(name: string, summary: string): string {
-      const known: Record<string, string> = {
-        Write: t('chat.toolWrite'),
-        Edit: t('chat.toolEdit'),
-        Read: t('chat.toolRead'),
-      };
-      const base = known[name] ?? t('chat.toolWorking', { name });
-      return summary ? `${base} ${summary}` : base;
-    }
 
     try {
-      for await (const event of streamChatMessage({
-        conversationId: id,
+      const accepted = await conversationsApi.sendMessage(id, {
         content,
-        signal: controller.signal,
-      })) {
-        switch (event.type) {
-          case 'start':
-            break;
-          case 'delta':
-            setToolStatus(null);
-            setStreamingText((prev) => (prev ?? '') + event.text);
-            break;
-          case 'tool':
-            setToolStatus(toolStatusLabel(event.name, event.summary));
-            break;
-          case 'done':
-            setToolStatus(null);
-            // «فایل‌های من» auto-refresh when the stream finishes (change order §1).
-            queryClient.invalidateQueries({ queryKey: ['workspace', 'files'] });
-            break;
-          case 'error':
-            setStreamError(
-              event.code === 'chat_busy' ? t('chat.chatBusy') : event.message || t('chat.streamError')
-            );
-            break;
-        }
-      }
+        thinking_level: selectedThinkingLevel,
+      });
+      stream.attach(id, accepted.assistant_message_id, streamCallbacks);
     } catch (err) {
-      if ((err as Error)?.name !== 'AbortError') {
-        setStreamError(getErrorMessage(err, t('chat.streamError')));
+      setOptimisticUserMessage(null);
+      if (err instanceof ApiError && err.code === 'chat_busy') {
+        setSendError(t('chat.chatBusy'));
+      } else {
+        setSendError(getErrorMessage(err, t('chat.streamError')));
+      }
+    }
+  }
+
+  async function handleRetry(messageId: number) {
+    if (!conversationId || isBusy) return;
+    setSendError(null);
+    setRetryPendingId(messageId);
+    try {
+      const accepted = await conversationsApi.retryMessage(conversationId, messageId);
+      stream.attach(conversationId, accepted.assistant_message_id, streamCallbacks);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'chat_busy') {
+        setSendError(t('chat.chatBusy'));
+      } else if (err instanceof ApiError && err.code === 'not_retryable') {
+        setSendError(t('chat.notRetryable'));
+      } else {
+        setSendError(getErrorMessage(err));
       }
     } finally {
-      await queryClient.invalidateQueries({ queryKey: ['conversation', id] });
-      await queryClient.refetchQueries({ queryKey: ['conversation', id] });
-      queryClient.invalidateQueries({ queryKey: ['conversations'] });
-      queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
-      setOptimisticUserMessage(null);
-      setStreamingText(null);
-      setToolStatus(null);
-      setIsStreaming(false);
+      setRetryPendingId(null);
+    }
+  }
+
+  function handleThinkingLevelChange(level: ThinkingLevel) {
+    if (conversationId) {
+      updateThinkingLevelMutation.mutate(level);
+    } else {
+      setNewChatThinkingLevel(level);
     }
   }
 
@@ -204,15 +275,23 @@ export default function ChatPage() {
           <Typography variant="subtitle1" noWrap fontWeight={600}>
             {conversationQuery.data?.title ?? t('chat.untitled')}
           </Typography>
-          <ModelPicker
-            models={allowedModels}
-            value={selectedModelKey}
-            disabled={isStreaming}
-            onChange={(modelKey) => {
-              if (conversationId) updateModelMutation.mutate(modelKey);
-              else setNewChatModelKey(modelKey);
-            }}
-          />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <ThinkingLevelPicker
+              value={selectedThinkingLevel}
+              maxLevel={maxThinkingLevel}
+              disabled={isBusy}
+              onChange={handleThinkingLevelChange}
+            />
+            <ModelPicker
+              models={allowedModels}
+              value={selectedModelKey}
+              disabled={isBusy}
+              onChange={(modelKey) => {
+                if (conversationId) updateModelMutation.mutate(modelKey);
+                else setNewChatModelKey(modelKey);
+              }}
+            />
+          </Box>
         </Toolbar>
 
         {noModelsAllowed && (
@@ -220,9 +299,9 @@ export default function ChatPage() {
             {t('chat.noModelsAllowed')}
           </Alert>
         )}
-        {streamError && (
-          <Alert severity="error" sx={{ borderRadius: 0 }} onClose={() => setStreamError(null)}>
-            {streamError}
+        {sendError && (
+          <Alert severity="error" sx={{ borderRadius: 0 }} onClose={() => setSendError(null)}>
+            {sendError}
           </Alert>
         )}
         {uploadError && (
@@ -239,16 +318,20 @@ export default function ChatPage() {
           {(!conversationId || conversationQuery.data) && (
             <MessageList
               messages={displayMessages}
-              streamingText={streamingText}
-              isStreaming={isStreaming}
-              toolStatus={toolStatus}
+              live={{
+                assistantMessageId: stream.state.assistantMessageId,
+                text: stream.state.text,
+                toolStatus: toolStatusLabel(stream.state.tool),
+              }}
+              onRetry={handleRetry}
+              retryPendingId={retryPendingId}
             />
           )}
         </Box>
 
         <MessageInput
           disabled={noModelsAllowed || !selectedModelKey}
-          sending={isStreaming}
+          sending={isBusy}
           uploading={uploading}
           pendingAttachments={pendingAttachments}
           onRemovePendingAttachment={(id) =>

@@ -10,6 +10,7 @@ from app.errors import unauthorized, rate_limited
 from app.models import Model, ModelPolicy, User
 from app.schemas import LoginRequest, MeQuotaSummary, MeResponse, OkResponse
 from app.security import create_session_cookie, login_attempts, verify_password
+from app.services import thinking as thinking_service
 from app.services.audit import record_audit
 from app.services.quota import get_or_create_quota, get_used_credits
 
@@ -110,6 +111,7 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         role=getattr(user.role, "value", user.role),
         auth_source=getattr(user.auth_source, "value", user.auth_source),
         allowed_models=allowed_models,
+        max_thinking_level=thinking_service.global_cap().value,
         quota=MeQuotaSummary(
             period=getattr(quota.period, "value", quota.period),
             limit_credits=quota.limit_credits,

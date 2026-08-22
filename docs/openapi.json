@@ -1,1 +1,3625 @@
-{"openapi": "3.1.0", "info": {"title": "EcoCode Gateway", "version": "1.1.0"}, "paths": {"/api/health": {"get": {"tags": ["health"], "summary": "Health", "operationId": "health_api_health_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthOut"}}}}}}}, "/api/auth/login": {"post": {"tags": ["auth"], "summary": "Login", "operationId": "login_api_auth_login_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/LoginRequest"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/auth/logout": {"post": {"tags": ["auth"], "summary": "Logout", "operationId": "logout_api_auth_logout_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/OkResponse"}}}}}}}, "/api/auth/me": {"get": {"tags": ["auth"], "summary": "Me", "operationId": "me_api_auth_me_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MeResponse"}}}}}}}, "/api/conversations": {"get": {"tags": ["conversations"], "summary": "List Conversations", "operationId": "list_conversations_api_conversations_get", "parameters": [{"name": "q", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Q"}}, {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "maximum": 200, "default": 50, "title": "Limit"}}, {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0, "title": "Offset"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/ConversationOut"}, "title": "Response List Conversations Api Conversations Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "post": {"tags": ["conversations"], "summary": "Create Conversation", "operationId": "create_conversation_api_conversations_post", "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConversationCreate"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConversationOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/conversations/{conversation_id}": {"get": {"tags": ["conversations"], "summary": "Get Conversation", "operationId": "get_conversation_api_conversations__conversation_id__get", "parameters": [{"name": "conversation_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Conversation Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConversationDetailOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "patch": {"tags": ["conversations"], "summary": "Update Conversation", "operationId": "update_conversation_api_conversations__conversation_id__patch", "parameters": [{"name": "conversation_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Conversation Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConversationUpdate"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ConversationOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "delete": {"tags": ["conversations"], "summary": "Delete Conversation", "operationId": "delete_conversation_api_conversations__conversation_id__delete", "parameters": [{"name": "conversation_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Conversation Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Delete Conversation Api Conversations  Conversation Id  Delete"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/conversations/{conversation_id}/messages": {"post": {"tags": ["conversations"], "summary": "Send Message", "operationId": "send_message_api_conversations__conversation_id__messages_post", "parameters": [{"name": "conversation_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Conversation Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SendMessageRequest"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/conversations/{conversation_id}/attachments": {"post": {"tags": ["conversations"], "summary": "Upload Attachment", "operationId": "upload_attachment_api_conversations__conversation_id__attachments_post", "parameters": [{"name": "conversation_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Conversation Id"}}], "requestBody": {"required": true, "content": {"multipart/form-data": {"schema": {"$ref": "#/components/schemas/Body_upload_attachment_api_conversations__conversation_id__attachments_post"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Upload Attachment Api Conversations  Conversation Id  Attachments Post"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/attachments/{attachment_id}": {"get": {"tags": ["conversations"], "summary": "Download Attachment", "operationId": "download_attachment_api_attachments__attachment_id__get", "parameters": [{"name": "attachment_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Attachment Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/workspace/files": {"get": {"tags": ["workspace"], "summary": "List Files", "operationId": "list_files_api_workspace_files_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/WorkspaceFileOut"}, "type": "array", "title": "Response List Files Api Workspace Files Get"}}}}}}}, "/api/workspace/files/{file_id}": {"get": {"tags": ["workspace"], "summary": "Download File", "operationId": "download_file_api_workspace_files__file_id__get", "parameters": [{"name": "file_id", "in": "path", "required": true, "schema": {"type": "string", "title": "File Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "delete": {"tags": ["workspace"], "summary": "Delete File", "operationId": "delete_file_api_workspace_files__file_id__delete", "parameters": [{"name": "file_id", "in": "path", "required": true, "schema": {"type": "string", "title": "File Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Delete File Api Workspace Files  File Id  Delete"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/keys": {"get": {"tags": ["keys"], "summary": "List Keys", "operationId": "list_keys_api_keys_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/ApiKeyOut"}, "type": "array", "title": "Response List Keys Api Keys Get"}}}}}}, "post": {"tags": ["keys"], "summary": "Create Key", "operationId": "create_key_api_keys_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiKeyCreate"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiKeyCreatedOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/keys/{key_id}": {"delete": {"tags": ["keys"], "summary": "Revoke Key", "operationId": "revoke_key_api_keys__key_id__delete", "parameters": [{"name": "key_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Key Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Revoke Key Api Keys  Key Id  Delete"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/usage/me": {"get": {"tags": ["usage"], "summary": "My Usage", "operationId": "my_usage_api_usage_me_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/MyUsageResponse"}}}}}}}, "/v1/models": {"get": {"tags": ["passthrough"], "summary": "List Models", "operationId": "list_models_v1_models_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response List Models V1 Models Get"}}}}}}}, "/v1/messages": {"post": {"tags": ["passthrough"], "summary": "Anthropic Messages", "operationId": "anthropic_messages_v1_messages_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}}}}, "/v1/chat/completions": {"post": {"tags": ["passthrough"], "summary": "Chat Completions", "operationId": "chat_completions_v1_chat_completions_post", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}}}}, "/api/admin/users": {"get": {"tags": ["admin-users"], "summary": "List Users", "operationId": "list_users_api_admin_users_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/UserOut"}, "type": "array", "title": "Response List Users Api Admin Users Get"}}}}}}, "post": {"tags": ["admin-users"], "summary": "Create User", "operationId": "create_user_api_admin_users_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserCreate"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/users/{user_id}": {"get": {"tags": ["admin-users"], "summary": "Get User", "operationId": "get_user_api_admin_users__user_id__get", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserDetailOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "patch": {"tags": ["admin-users"], "summary": "Update User", "operationId": "update_user_api_admin_users__user_id__patch", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserUpdate"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UserOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}, "delete": {"tags": ["admin-users"], "summary": "Delete User", "operationId": "delete_user_api_admin_users__user_id__delete", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Delete User Api Admin Users  User Id  Delete"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/users/{user_id}/policy": {"put": {"tags": ["admin-users"], "summary": "Set Policy", "operationId": "set_policy_api_admin_users__user_id__policy_put", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PolicySetRequest"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Set Policy Api Admin Users  User Id  Policy Put"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/users/{user_id}/quota": {"put": {"tags": ["admin-users"], "summary": "Set Quota", "operationId": "set_quota_api_admin_users__user_id__quota_put", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QuotaSetRequest"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Set Quota Api Admin Users  User Id  Quota Put"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/users/{user_id}/quota/bonus": {"post": {"tags": ["admin-users"], "summary": "Add Quota Bonus", "operationId": "add_quota_bonus_api_admin_users__user_id__quota_bonus_post", "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "User Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/QuotaBonusRequest"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Add Quota Bonus Api Admin Users  User Id  Quota Bonus Post"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/models": {"get": {"tags": ["admin-models"], "summary": "List Models", "operationId": "list_models_api_admin_models_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"items": {"$ref": "#/components/schemas/ModelOut"}, "type": "array", "title": "Response List Models Api Admin Models Get"}}}}}}, "post": {"tags": ["admin-models"], "summary": "Create Model", "operationId": "create_model_api_admin_models_post", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelCreate"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/models/{model_id}": {"patch": {"tags": ["admin-models"], "summary": "Update Model", "operationId": "update_model_api_admin_models__model_id__patch", "parameters": [{"name": "model_id", "in": "path", "required": true, "schema": {"type": "integer", "title": "Model Id"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelUpdate"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModelOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/usage": {"get": {"tags": ["admin-usage"], "summary": "Admin Usage", "operationId": "admin_usage_api_admin_usage_get", "parameters": [{"name": "since", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Since"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AdminUsageResponse"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/usage/export.csv": {"get": {"tags": ["admin-usage"], "summary": "Export Usage Csv", "operationId": "export_usage_csv_api_admin_usage_export_csv_get", "parameters": [{"name": "since", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Since"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/audit": {"get": {"tags": ["admin-usage"], "summary": "List Audit", "operationId": "list_audit_api_admin_audit_get", "parameters": [{"name": "action", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Action"}}, {"name": "user_id", "in": "query", "required": false, "schema": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "User Id"}}, {"name": "since", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Since"}}, {"name": "until", "in": "query", "required": false, "schema": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Until"}}, {"name": "limit", "in": "query", "required": false, "schema": {"type": "integer", "maximum": 500, "default": 100, "title": "Limit"}}, {"name": "offset", "in": "query", "required": false, "schema": {"type": "integer", "minimum": 0, "default": 0, "title": "Offset"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/AuditLogOut"}, "title": "Response List Audit Api Admin Audit Get"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/upstream/status": {"get": {"tags": ["admin-upstream"], "summary": "Upstream Status", "operationId": "upstream_status_api_admin_upstream_status_get", "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpstreamStatusOut"}}}}}}}, "/api/admin/upstream/apikey": {"put": {"tags": ["admin-upstream"], "summary": "Set Apikey", "operationId": "set_apikey_api_admin_upstream_apikey_put", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ApiKeySetRequest"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Set Apikey Api Admin Upstream Apikey Put"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/api/admin/upstream/mode": {"put": {"tags": ["admin-upstream"], "summary": "Set Mode", "operationId": "set_mode_api_admin_upstream_mode_put", "requestBody": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/ModeSetRequest"}}}, "required": true}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "title": "Response Set Mode Api Admin Upstream Mode Put"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/internal/usage-report": {"post": {"tags": ["internal"], "summary": "Usage Report", "operationId": "usage_report_internal_usage_report_post", "parameters": [{"name": "authorization", "in": "header", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Authorization"}}], "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UsageReport"}}}}, "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"type": "object", "additionalProperties": {"type": "boolean"}, "title": "Response Usage Report Internal Usage Report Post"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}, "/internal/upstream-config": {"get": {"tags": ["internal"], "summary": "Upstream Config", "operationId": "upstream_config_internal_upstream_config_get", "parameters": [{"name": "authorization", "in": "header", "required": false, "schema": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Authorization"}}], "responses": {"200": {"description": "Successful Response", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/UpstreamConfigOut"}}}}, "422": {"description": "Validation Error", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HTTPValidationError"}}}}}}}}, "components": {"schemas": {"AdminUsageResponse": {"properties": {"total_credits": {"type": "string", "title": "Total Credits"}, "by_user": {"items": {"$ref": "#/components/schemas/UserUsageRow"}, "type": "array", "title": "By User"}, "by_model": {"items": {"$ref": "#/components/schemas/UsageByModel"}, "type": "array", "title": "By Model"}, "daily": {"items": {"$ref": "#/components/schemas/UsageDailyPoint"}, "type": "array", "title": "Daily"}}, "type": "object", "required": ["total_credits", "by_user", "by_model", "daily"], "title": "AdminUsageResponse"}, "ApiKeyCreate": {"properties": {"name": {"type": "string", "maxLength": 255, "minLength": 1, "title": "Name"}}, "type": "object", "required": ["name"], "title": "ApiKeyCreate"}, "ApiKeyCreatedOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "name": {"type": "string", "title": "Name"}, "key_prefix": {"type": "string", "title": "Key Prefix"}, "is_active": {"type": "boolean", "title": "Is Active"}, "last_used_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Used At"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}, "key": {"type": "string", "title": "Key"}}, "type": "object", "required": ["id", "name", "key_prefix", "is_active", "last_used_at", "created_at", "key"], "title": "ApiKeyCreatedOut"}, "ApiKeyOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "name": {"type": "string", "title": "Name"}, "key_prefix": {"type": "string", "title": "Key Prefix"}, "is_active": {"type": "boolean", "title": "Is Active"}, "last_used_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Used At"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}}, "type": "object", "required": ["id", "name", "key_prefix", "is_active", "last_used_at", "created_at"], "title": "ApiKeyOut"}, "ApiKeySetRequest": {"properties": {"api_key": {"type": "string", "title": "Api Key"}}, "type": "object", "required": ["api_key"], "title": "ApiKeySetRequest"}, "AuditLogOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "actor_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Actor Id"}, "actor_username": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Actor Username"}, "target_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Target Id"}, "target_username": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Target Username"}, "action": {"type": "string", "title": "Action"}, "detail": {"anyOf": [{"type": "object"}, {"type": "null"}], "title": "Detail"}, "ip_address": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Ip Address"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}}, "type": "object", "required": ["id", "actor_id", "target_id", "action", "detail", "ip_address", "created_at"], "title": "AuditLogOut"}, "Body_upload_attachment_api_conversations__conversation_id__attachments_post": {"properties": {"file": {"type": "string", "format": "binary", "title": "File"}}, "type": "object", "required": ["file"], "title": "Body_upload_attachment_api_conversations__conversation_id__attachments_post"}, "ConversationCreate": {"properties": {"title": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Title"}, "model_key": {"type": "string", "title": "Model Key"}}, "type": "object", "required": ["model_key"], "title": "ConversationCreate"}, "ConversationDetailOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "title": {"type": "string", "title": "Title"}, "model_key": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Model Key"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}, "updated_at": {"type": "string", "format": "date-time", "title": "Updated At"}, "messages": {"items": {"$ref": "#/components/schemas/MessageOut"}, "type": "array", "title": "Messages", "default": []}}, "type": "object", "required": ["id", "title", "created_at", "updated_at"], "title": "ConversationDetailOut"}, "ConversationOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "title": {"type": "string", "title": "Title"}, "model_key": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Model Key"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}, "updated_at": {"type": "string", "format": "date-time", "title": "Updated At"}}, "type": "object", "required": ["id", "title", "created_at", "updated_at"], "title": "ConversationOut"}, "ConversationUpdate": {"properties": {"title": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Title"}, "model_key": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Model Key"}}, "type": "object", "title": "ConversationUpdate"}, "HTTPValidationError": {"properties": {"detail": {"items": {"$ref": "#/components/schemas/ValidationError"}, "type": "array", "title": "Detail"}}, "type": "object", "title": "HTTPValidationError"}, "HealthOut": {"properties": {"status": {"type": "string", "title": "Status"}, "db": {"type": "boolean", "title": "Db"}, "litellm": {"type": "boolean", "title": "Litellm"}, "upstream_mode": {"type": "string", "title": "Upstream Mode"}, "upstream_connected": {"type": "boolean", "title": "Upstream Connected"}, "cli_available": {"type": "boolean", "title": "Cli Available"}}, "type": "object", "required": ["status", "db", "litellm", "upstream_mode", "upstream_connected", "cli_available"], "title": "HealthOut"}, "LoginRequest": {"properties": {"username": {"type": "string", "title": "Username"}, "password": {"type": "string", "title": "Password"}}, "type": "object", "required": ["username", "password"], "title": "LoginRequest"}, "MeQuotaSummary": {"properties": {"period": {"type": "string", "title": "Period"}, "limit_credits": {"type": "string", "title": "Limit Credits"}, "bonus_credits": {"type": "string", "title": "Bonus Credits"}, "used_credits": {"type": "string", "title": "Used Credits"}, "period_start": {"type": "string", "format": "date-time", "title": "Period Start"}}, "type": "object", "required": ["period", "limit_credits", "bonus_credits", "used_credits", "period_start"], "title": "MeQuotaSummary"}, "MeResponse": {"properties": {"id": {"type": "integer", "title": "Id"}, "username": {"type": "string", "title": "Username"}, "display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Email"}, "role": {"type": "string", "title": "Role"}, "auth_source": {"type": "string", "title": "Auth Source"}, "allowed_models": {"items": {"type": "string"}, "type": "array", "title": "Allowed Models"}, "quota": {"anyOf": [{"$ref": "#/components/schemas/MeQuotaSummary"}, {"type": "null"}]}}, "type": "object", "required": ["id", "username", "display_name", "email", "role", "auth_source", "allowed_models", "quota"], "title": "MeResponse"}, "MessageOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "role": {"type": "string", "title": "Role"}, "content": {"type": "string", "title": "Content"}, "content_blocks": {"anyOf": [{"type": "object"}, {"type": "null"}], "title": "Content Blocks"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}}, "type": "object", "required": ["id", "role", "content", "created_at"], "title": "MessageOut"}, "ModeSetRequest": {"properties": {"mode": {"type": "string", "enum": ["mock", "cli_creds", "apikey"], "title": "Mode"}}, "type": "object", "required": ["mode"], "title": "ModeSetRequest"}, "ModelCreate": {"properties": {"model_key": {"type": "string", "title": "Model Key"}, "display_name": {"type": "string", "title": "Display Name"}, "upstream_model": {"type": "string", "title": "Upstream Model"}, "input_weight": {"anyOf": [{"type": "number"}, {"type": "string"}], "title": "Input Weight"}, "output_weight": {"anyOf": [{"type": "number"}, {"type": "string"}], "title": "Output Weight"}, "cache_read_weight": {"anyOf": [{"type": "number"}, {"type": "string"}], "title": "Cache Read Weight"}, "sort_order": {"type": "integer", "title": "Sort Order", "default": 0}}, "type": "object", "required": ["model_key", "display_name", "upstream_model", "input_weight", "output_weight", "cache_read_weight"], "title": "ModelCreate"}, "ModelOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "model_key": {"type": "string", "title": "Model Key"}, "display_name": {"type": "string", "title": "Display Name"}, "upstream_model": {"type": "string", "title": "Upstream Model"}, "input_weight": {"type": "string", "title": "Input Weight"}, "output_weight": {"type": "string", "title": "Output Weight"}, "cache_read_weight": {"type": "string", "title": "Cache Read Weight"}, "is_enabled": {"type": "boolean", "title": "Is Enabled"}, "sort_order": {"type": "integer", "title": "Sort Order"}}, "type": "object", "required": ["id", "model_key", "display_name", "upstream_model", "input_weight", "output_weight", "cache_read_weight", "is_enabled", "sort_order"], "title": "ModelOut"}, "ModelUpdate": {"properties": {"display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "upstream_model": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Upstream Model"}, "input_weight": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}], "title": "Input Weight"}, "output_weight": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}], "title": "Output Weight"}, "cache_read_weight": {"anyOf": [{"type": "number"}, {"type": "string"}, {"type": "null"}], "title": "Cache Read Weight"}, "is_enabled": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Is Enabled"}, "sort_order": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Sort Order"}}, "type": "object", "title": "ModelUpdate"}, "MyUsageResponse": {"properties": {"period": {"type": "string", "title": "Period"}, "period_start": {"type": "string", "format": "date-time", "title": "Period Start"}, "limit_credits": {"type": "string", "title": "Limit Credits"}, "bonus_credits": {"type": "string", "title": "Bonus Credits"}, "used_credits": {"type": "string", "title": "Used Credits"}, "by_model": {"items": {"$ref": "#/components/schemas/UsageByModel"}, "type": "array", "title": "By Model"}, "by_key": {"items": {"$ref": "#/components/schemas/UsageByKey"}, "type": "array", "title": "By Key"}, "daily": {"items": {"$ref": "#/components/schemas/UsageDailyPoint"}, "type": "array", "title": "Daily"}}, "type": "object", "required": ["period", "period_start", "limit_credits", "bonus_credits", "used_credits", "by_model", "by_key", "daily"], "title": "MyUsageResponse"}, "OkResponse": {"properties": {"ok": {"type": "boolean", "title": "Ok", "default": true}}, "type": "object", "title": "OkResponse"}, "PolicySetRequest": {"properties": {"model_keys": {"items": {"type": "string"}, "type": "array", "title": "Model Keys"}}, "type": "object", "required": ["model_keys"], "title": "PolicySetRequest"}, "QuotaBonusRequest": {"properties": {"bonus_credits": {"anyOf": [{"type": "number"}, {"type": "string"}], "title": "Bonus Credits"}}, "type": "object", "required": ["bonus_credits"], "title": "QuotaBonusRequest"}, "QuotaOut": {"properties": {"period": {"type": "string", "title": "Period"}, "limit_credits": {"type": "string", "title": "Limit Credits"}, "bonus_credits": {"type": "string", "title": "Bonus Credits"}, "period_start": {"type": "string", "format": "date-time", "title": "Period Start"}}, "type": "object", "required": ["period", "limit_credits", "bonus_credits", "period_start"], "title": "QuotaOut"}, "QuotaSetRequest": {"properties": {"period": {"type": "string", "enum": ["daily", "weekly", "monthly"], "title": "Period"}, "limit_credits": {"anyOf": [{"type": "number"}, {"type": "string"}], "title": "Limit Credits"}}, "type": "object", "required": ["period", "limit_credits"], "title": "QuotaSetRequest"}, "SendMessageRequest": {"properties": {"content": {"type": "string", "title": "Content"}}, "type": "object", "required": ["content"], "title": "SendMessageRequest"}, "UpstreamConfigOut": {"properties": {"mode": {"type": "string", "title": "Mode"}, "base_url": {"type": "string", "title": "Base Url"}, "api_key": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Api Key"}, "auth_header": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Auth Header"}, "oauth_beta": {"type": "boolean", "title": "Oauth Beta", "default": false}, "model_map": {"additionalProperties": {"type": "string"}, "type": "object", "title": "Model Map", "default": {}}}, "type": "object", "required": ["mode", "base_url"], "title": "UpstreamConfigOut"}, "UpstreamStatusOut": {"properties": {"mode": {"type": "string", "title": "Mode"}, "connected": {"type": "boolean", "title": "Connected"}, "expires_at": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Expires At"}, "expiring_soon": {"type": "boolean", "title": "Expiring Soon", "default": false}, "creds_source": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Creds Source"}, "base_url": {"type": "string", "title": "Base Url"}, "last_synced": {"anyOf": [{"type": "string", "format": "date-time"}, {"type": "null"}], "title": "Last Synced"}, "last_checked": {"type": "string", "format": "date-time", "title": "Last Checked"}}, "type": "object", "required": ["mode", "connected", "base_url", "last_checked"], "title": "UpstreamStatusOut"}, "UsageByKey": {"properties": {"api_key_id": {"anyOf": [{"type": "integer"}, {"type": "null"}], "title": "Api Key Id"}, "name": {"type": "string", "title": "Name"}, "credits": {"type": "string", "title": "Credits"}}, "type": "object", "required": ["api_key_id", "name", "credits"], "title": "UsageByKey"}, "UsageByModel": {"properties": {"model_key": {"type": "string", "title": "Model Key"}, "credits": {"type": "string", "title": "Credits"}}, "type": "object", "required": ["model_key", "credits"], "title": "UsageByModel"}, "UsageDailyPoint": {"properties": {"date": {"type": "string", "format": "date", "title": "Date"}, "credits": {"type": "string", "title": "Credits"}}, "type": "object", "required": ["date", "credits"], "title": "UsageDailyPoint"}, "UsageReport": {"properties": {"request_id": {"type": "string", "title": "Request Id"}, "input_tokens": {"type": "integer", "title": "Input Tokens", "default": 0}, "output_tokens": {"type": "integer", "title": "Output Tokens", "default": 0}, "cache_read_tokens": {"type": "integer", "title": "Cache Read Tokens", "default": 0}, "cache_write_tokens": {"type": "integer", "title": "Cache Write Tokens", "default": 0}, "upstream_request_id": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Upstream Request Id"}}, "type": "object", "required": ["request_id"], "title": "UsageReport"}, "UserCreate": {"properties": {"username": {"type": "string", "title": "Username"}, "display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "email": {"anyOf": [{"type": "string", "format": "email"}, {"type": "null"}], "title": "Email"}, "role": {"type": "string", "enum": ["admin", "user"], "title": "Role", "default": "user"}, "auth_source": {"type": "string", "enum": ["local", "ldap"], "title": "Auth Source", "default": "local"}, "password": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Password"}}, "type": "object", "required": ["username"], "title": "UserCreate"}, "UserDetailOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "username": {"type": "string", "title": "Username"}, "display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Email"}, "role": {"type": "string", "title": "Role"}, "auth_source": {"type": "string", "title": "Auth Source"}, "is_active": {"type": "boolean", "title": "Is Active"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}, "allowed_models": {"items": {"type": "string"}, "type": "array", "title": "Allowed Models"}, "quota": {"anyOf": [{"$ref": "#/components/schemas/QuotaOut"}, {"type": "null"}]}}, "type": "object", "required": ["id", "username", "display_name", "email", "role", "auth_source", "is_active", "created_at", "allowed_models", "quota"], "title": "UserDetailOut"}, "UserOut": {"properties": {"id": {"type": "integer", "title": "Id"}, "username": {"type": "string", "title": "Username"}, "display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "email": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Email"}, "role": {"type": "string", "title": "Role"}, "auth_source": {"type": "string", "title": "Auth Source"}, "is_active": {"type": "boolean", "title": "Is Active"}, "created_at": {"type": "string", "format": "date-time", "title": "Created At"}}, "type": "object", "required": ["id", "username", "display_name", "email", "role", "auth_source", "is_active", "created_at"], "title": "UserOut"}, "UserUpdate": {"properties": {"display_name": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Display Name"}, "email": {"anyOf": [{"type": "string", "format": "email"}, {"type": "null"}], "title": "Email"}, "role": {"anyOf": [{"type": "string", "enum": ["admin", "user"]}, {"type": "null"}], "title": "Role"}, "is_active": {"anyOf": [{"type": "boolean"}, {"type": "null"}], "title": "Is Active"}, "password": {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Password"}}, "type": "object", "title": "UserUpdate"}, "UserUsageRow": {"properties": {"user_id": {"type": "integer", "title": "User Id"}, "username": {"type": "string", "title": "Username"}, "credits": {"type": "string", "title": "Credits"}}, "type": "object", "required": ["user_id", "username", "credits"], "title": "UserUsageRow"}, "ValidationError": {"properties": {"loc": {"items": {"anyOf": [{"type": "string"}, {"type": "integer"}]}, "type": "array", "title": "Location"}, "msg": {"type": "string", "title": "Message"}, "type": {"type": "string", "title": "Error Type"}}, "type": "object", "required": ["loc", "msg", "type"], "title": "ValidationError"}, "WorkspaceFileOut": {"properties": {"file_id": {"type": "string", "title": "File Id"}, "name": {"type": "string", "title": "Name"}, "relpath": {"type": "string", "title": "Relpath"}, "size_bytes": {"type": "integer", "title": "Size Bytes"}, "modified_at": {"type": "string", "format": "date-time", "title": "Modified At"}}, "type": "object", "required": ["file_id", "name", "relpath", "size_bytes", "modified_at"], "title": "WorkspaceFileOut"}}}}
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "EcoCode Gateway",
+    "version": "1.2.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Logout",
+        "operationId": "logout_api_auth_logout_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Me",
+        "operationId": "me_api_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "List Conversations",
+        "operationId": "list_conversations_api_conversations_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "default": 50,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConversationOut"
+                  },
+                  "title": "Response List Conversations Api Conversations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Create Conversation",
+        "operationId": "create_conversation_api_conversations_post",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Get Conversation",
+        "operationId": "get_conversation_api_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Update Conversation",
+        "operationId": "update_conversation_api_conversations__conversation_id__patch",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Delete Conversation",
+        "operationId": "delete_conversation_api_conversations__conversation_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Delete Conversation Api Conversations  Conversation Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Send Message",
+        "operationId": "send_message_api_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnAcceptedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/stream": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Stream Conversation",
+        "description": "Issue A reattach protocol (TECH.md 5.1/5.3): if a turn is active, replay every\nbuffered event from index 0 then keep following live until the terminal event; if\nno turn is active, emit a single `idle` event and close. Idempotent — any number of\nclients, any number of times, from any tab.",
+        "operationId": "stream_conversation_api_conversations__conversation_id__stream_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/messages/{message_id}/retry": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Retry Message",
+        "description": "Issue C (TECH.md 5.1): retries the failed turn IN PLACE — same assistant row,\nsame id, reset to streaming — rather than creating a new message row.",
+        "operationId": "retry_message_api_conversations__conversation_id__messages__message_id__retry_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Message Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnAcceptedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/conversations/{conversation_id}/attachments": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Upload Attachment",
+        "operationId": "upload_attachment_api_conversations__conversation_id__attachments_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_attachment_api_conversations__conversation_id__attachments_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Upload Attachment Api Conversations  Conversation Id  Attachments Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/attachments/{attachment_id}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Download Attachment",
+        "operationId": "download_attachment_api_attachments__attachment_id__get",
+        "parameters": [
+          {
+            "name": "attachment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Attachment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "List Files",
+        "operationId": "list_files_api_workspace_files_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceFileOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Files Api Workspace Files Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/workspace/files/{file_id}": {
+      "get": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Download File",
+        "operationId": "download_file_api_workspace_files__file_id__get",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspace"
+        ],
+        "summary": "Delete File",
+        "operationId": "delete_file_api_workspace_files__file_id__delete",
+        "parameters": [
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Delete File Api Workspace Files  File Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/keys": {
+      "get": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "List Keys",
+        "operationId": "list_keys_api_keys_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ApiKeyOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Keys Api Keys Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Create Key",
+        "operationId": "create_key_api_keys_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreatedOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Revoke Key",
+        "operationId": "revoke_key_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Key Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Revoke Key Api Keys  Key Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/usage/me": {
+      "get": {
+        "tags": [
+          "usage"
+        ],
+        "summary": "My Usage",
+        "operationId": "my_usage_api_usage_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyUsageResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "tags": [
+          "passthrough"
+        ],
+        "summary": "List Models",
+        "operationId": "list_models_v1_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response List Models V1 Models Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/messages": {
+      "post": {
+        "tags": [
+          "passthrough"
+        ],
+        "summary": "Anthropic Messages",
+        "operationId": "anthropic_messages_v1_messages_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "tags": [
+          "passthrough"
+        ],
+        "summary": "Chat Completions",
+        "operationId": "chat_completions_v1_chat_completions_post",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users": {
+      "get": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "List Users",
+        "operationId": "list_users_api_admin_users_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/UserOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Users Api Admin Users Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Create User",
+        "operationId": "create_user_api_admin_users_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}": {
+      "get": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Get User",
+        "operationId": "get_user_api_admin_users__user_id__get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserDetailOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Update User",
+        "operationId": "update_user_api_admin_users__user_id__patch",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Delete User",
+        "operationId": "delete_user_api_admin_users__user_id__delete",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Delete User Api Admin Users  User Id  Delete"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/policy": {
+      "put": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Set Policy",
+        "operationId": "set_policy_api_admin_users__user_id__policy_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PolicySetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Set Policy Api Admin Users  User Id  Policy Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/quota": {
+      "put": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Set Quota",
+        "operationId": "set_quota_api_admin_users__user_id__quota_put",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaSetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Set Quota Api Admin Users  User Id  Quota Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/quota/bonus": {
+      "post": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Add Quota Bonus",
+        "operationId": "add_quota_bonus_api_admin_users__user_id__quota_bonus_post",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuotaBonusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Add Quota Bonus Api Admin Users  User Id  Quota Bonus Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/models": {
+      "get": {
+        "tags": [
+          "admin-models"
+        ],
+        "summary": "List Models",
+        "operationId": "list_models_api_admin_models_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModelOut"
+                  },
+                  "type": "array",
+                  "title": "Response List Models Api Admin Models Get"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-models"
+        ],
+        "summary": "Create Model",
+        "operationId": "create_model_api_admin_models_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/models/{model_id}": {
+      "patch": {
+        "tags": [
+          "admin-models"
+        ],
+        "summary": "Update Model",
+        "operationId": "update_model_api_admin_models__model_id__patch",
+        "parameters": [
+          {
+            "name": "model_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Model Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModelUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/usage": {
+      "get": {
+        "tags": [
+          "admin-usage"
+        ],
+        "summary": "Admin Usage",
+        "operationId": "admin_usage_api_admin_usage_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUsageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/usage/export.csv": {
+      "get": {
+        "tags": [
+          "admin-usage"
+        ],
+        "summary": "Export Usage Csv",
+        "operationId": "export_usage_csv_api_admin_usage_export_csv_get",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/audit": {
+      "get": {
+        "tags": [
+          "admin-usage"
+        ],
+        "summary": "List Audit",
+        "operationId": "list_audit_api_admin_audit_get",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
+            }
+          },
+          {
+            "name": "user_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 500,
+              "default": 100,
+              "title": "Limit"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Offset"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AuditLogOut"
+                  },
+                  "title": "Response List Audit Api Admin Audit Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/upstream/status": {
+      "get": {
+        "tags": [
+          "admin-upstream"
+        ],
+        "summary": "Upstream Status",
+        "operationId": "upstream_status_api_admin_upstream_status_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpstreamStatusOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/upstream/apikey": {
+      "put": {
+        "tags": [
+          "admin-upstream"
+        ],
+        "summary": "Set Apikey",
+        "operationId": "set_apikey_api_admin_upstream_apikey_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeySetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Set Apikey Api Admin Upstream Apikey Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/upstream/mode": {
+      "put": {
+        "tags": [
+          "admin-upstream"
+        ],
+        "summary": "Set Mode",
+        "operationId": "set_mode_api_admin_upstream_mode_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeSetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Set Mode Api Admin Upstream Mode Put"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/usage-report": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Usage Report",
+        "operationId": "usage_report_internal_usage_report_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UsageReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Usage Report Internal Usage Report Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/upstream-config": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Upstream Config",
+        "operationId": "upstream_config_internal_upstream_config_get",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpstreamConfigOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AdminUsageResponse": {
+        "properties": {
+          "total_credits": {
+            "type": "string",
+            "title": "Total Credits"
+          },
+          "by_user": {
+            "items": {
+              "$ref": "#/components/schemas/UserUsageRow"
+            },
+            "type": "array",
+            "title": "By User"
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/UsageByModel"
+            },
+            "type": "array",
+            "title": "By Model"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDailyPoint"
+            },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_credits",
+          "by_user",
+          "by_model",
+          "daily"
+        ],
+        "title": "AdminUsageResponse"
+      },
+      "ApiKeyCreate": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ApiKeyCreate"
+      },
+      "ApiKeyCreatedOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "key_prefix": {
+            "type": "string",
+            "title": "Key Prefix"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "key": {
+            "type": "string",
+            "title": "Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "is_active",
+          "last_used_at",
+          "created_at",
+          "key"
+        ],
+        "title": "ApiKeyCreatedOut"
+      },
+      "ApiKeyOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "key_prefix": {
+            "type": "string",
+            "title": "Key Prefix"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "key_prefix",
+          "is_active",
+          "last_used_at",
+          "created_at"
+        ],
+        "title": "ApiKeyOut"
+      },
+      "ApiKeySetRequest": {
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "title": "Api Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key"
+        ],
+        "title": "ApiKeySetRequest"
+      },
+      "AuditLogOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "actor_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Username"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "target_username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Username"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "ip_address": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Address"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "actor_id",
+          "target_id",
+          "action",
+          "detail",
+          "ip_address",
+          "created_at"
+        ],
+        "title": "AuditLogOut"
+      },
+      "Body_upload_attachment_api_conversations__conversation_id__attachments_post": {
+        "properties": {
+          "file": {
+            "type": "string",
+            "format": "binary",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_attachment_api_conversations__conversation_id__attachments_post"
+      },
+      "ConversationCreate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "model_key": {
+            "type": "string",
+            "title": "Model Key"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_key"
+        ],
+        "title": "ConversationCreate"
+      },
+      "ConversationDetailOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "model_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Key"
+          },
+          "thinking_level": {
+            "type": "string",
+            "title": "Thinking Level"
+          },
+          "generating": {
+            "type": "boolean",
+            "title": "Generating"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageOut"
+            },
+            "type": "array",
+            "title": "Messages",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "thinking_level",
+          "generating",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationDetailOut"
+      },
+      "ConversationOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "model_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Key"
+          },
+          "thinking_level": {
+            "type": "string",
+            "title": "Thinking Level"
+          },
+          "generating": {
+            "type": "boolean",
+            "title": "Generating"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "thinking_level",
+          "generating",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ConversationOut"
+      },
+      "ConversationUpdate": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "model_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Key"
+          },
+          "thinking_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "standard",
+                  "deep"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Level"
+          }
+        },
+        "type": "object",
+        "title": "ConversationUpdate"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "db": {
+            "type": "boolean",
+            "title": "Db"
+          },
+          "litellm": {
+            "type": "boolean",
+            "title": "Litellm"
+          },
+          "upstream_mode": {
+            "type": "string",
+            "title": "Upstream Mode"
+          },
+          "upstream_connected": {
+            "type": "boolean",
+            "title": "Upstream Connected"
+          },
+          "cli_available": {
+            "type": "boolean",
+            "title": "Cli Available"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "db",
+          "litellm",
+          "upstream_mode",
+          "upstream_connected",
+          "cli_available"
+        ],
+        "title": "HealthOut"
+      },
+      "LastRefreshOut": {
+        "properties": {
+          "at": {
+            "type": "string",
+            "title": "At"
+          },
+          "ok": {
+            "type": "boolean",
+            "title": "Ok"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "at",
+          "ok"
+        ],
+        "title": "LastRefreshOut"
+      },
+      "LoginRequest": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "password": {
+            "type": "string",
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "MeQuotaSummary": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "limit_credits": {
+            "type": "string",
+            "title": "Limit Credits"
+          },
+          "bonus_credits": {
+            "type": "string",
+            "title": "Bonus Credits"
+          },
+          "used_credits": {
+            "type": "string",
+            "title": "Used Credits"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "limit_credits",
+          "bonus_credits",
+          "used_credits",
+          "period_start"
+        ],
+        "title": "MeQuotaSummary"
+      },
+      "MeResponse": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "auth_source": {
+            "type": "string",
+            "title": "Auth Source"
+          },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Models"
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MeQuotaSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "max_thinking_level": {
+            "type": "string",
+            "title": "Max Thinking Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "email",
+          "role",
+          "auth_source",
+          "allowed_models",
+          "quota",
+          "max_thinking_level"
+        ],
+        "title": "MeResponse"
+      },
+      "MessageOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "content_blocks": {
+            "anyOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Blocks"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Reason"
+          },
+          "thinking_level": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Level"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "role",
+          "content",
+          "status",
+          "created_at"
+        ],
+        "title": "MessageOut"
+      },
+      "ModeSetRequest": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "mock",
+              "cli_creds",
+              "apikey"
+            ],
+            "title": "Mode"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "ModeSetRequest"
+      },
+      "ModelCreate": {
+        "properties": {
+          "model_key": {
+            "type": "string",
+            "title": "Model Key"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "upstream_model": {
+            "type": "string",
+            "title": "Upstream Model"
+          },
+          "input_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Input Weight"
+          },
+          "output_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Output Weight"
+          },
+          "cache_read_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Cache Read Weight"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_key",
+          "display_name",
+          "upstream_model",
+          "input_weight",
+          "output_weight",
+          "cache_read_weight"
+        ],
+        "title": "ModelCreate"
+      },
+      "ModelOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "model_key": {
+            "type": "string",
+            "title": "Model Key"
+          },
+          "display_name": {
+            "type": "string",
+            "title": "Display Name"
+          },
+          "upstream_model": {
+            "type": "string",
+            "title": "Upstream Model"
+          },
+          "input_weight": {
+            "type": "string",
+            "title": "Input Weight"
+          },
+          "output_weight": {
+            "type": "string",
+            "title": "Output Weight"
+          },
+          "cache_read_weight": {
+            "type": "string",
+            "title": "Cache Read Weight"
+          },
+          "is_enabled": {
+            "type": "boolean",
+            "title": "Is Enabled"
+          },
+          "sort_order": {
+            "type": "integer",
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "model_key",
+          "display_name",
+          "upstream_model",
+          "input_weight",
+          "output_weight",
+          "cache_read_weight",
+          "is_enabled",
+          "sort_order"
+        ],
+        "title": "ModelOut"
+      },
+      "ModelUpdate": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "upstream_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upstream Model"
+          },
+          "input_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Weight"
+          },
+          "output_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Weight"
+          },
+          "cache_read_weight": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Read Weight"
+          },
+          "is_enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Enabled"
+          },
+          "sort_order": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sort Order"
+          }
+        },
+        "type": "object",
+        "title": "ModelUpdate"
+      },
+      "MyUsageResponse": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          },
+          "limit_credits": {
+            "type": "string",
+            "title": "Limit Credits"
+          },
+          "bonus_credits": {
+            "type": "string",
+            "title": "Bonus Credits"
+          },
+          "used_credits": {
+            "type": "string",
+            "title": "Used Credits"
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/UsageByModel"
+            },
+            "type": "array",
+            "title": "By Model"
+          },
+          "by_key": {
+            "items": {
+              "$ref": "#/components/schemas/UsageByKey"
+            },
+            "type": "array",
+            "title": "By Key"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDailyPoint"
+            },
+            "type": "array",
+            "title": "Daily"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "period_start",
+          "limit_credits",
+          "bonus_credits",
+          "used_credits",
+          "by_model",
+          "by_key",
+          "daily"
+        ],
+        "title": "MyUsageResponse"
+      },
+      "OkResponse": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "OkResponse"
+      },
+      "PolicySetRequest": {
+        "properties": {
+          "model_keys": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Model Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_keys"
+        ],
+        "title": "PolicySetRequest"
+      },
+      "QuotaBonusRequest": {
+        "properties": {
+          "bonus_credits": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Bonus Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bonus_credits"
+        ],
+        "title": "QuotaBonusRequest"
+      },
+      "QuotaOut": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "limit_credits": {
+            "type": "string",
+            "title": "Limit Credits"
+          },
+          "bonus_credits": {
+            "type": "string",
+            "title": "Bonus Credits"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "limit_credits",
+          "bonus_credits",
+          "period_start"
+        ],
+        "title": "QuotaOut"
+      },
+      "QuotaSetRequest": {
+        "properties": {
+          "period": {
+            "type": "string",
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly"
+            ],
+            "title": "Period"
+          },
+          "limit_credits": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Limit Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "period",
+          "limit_credits"
+        ],
+        "title": "QuotaSetRequest"
+      },
+      "SendMessageRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "thinking_level": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "off",
+                  "standard",
+                  "deep"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Thinking Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "SendMessageRequest"
+      },
+      "TurnAcceptedOut": {
+        "properties": {
+          "assistant_message_id": {
+            "type": "integer",
+            "title": "Assistant Message Id"
+          },
+          "generating": {
+            "type": "boolean",
+            "title": "Generating",
+            "default": true
+          },
+          "thinking_level": {
+            "type": "string",
+            "title": "Thinking Level"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assistant_message_id",
+          "thinking_level"
+        ],
+        "title": "TurnAcceptedOut",
+        "description": "202 body for POST messages and POST .../retry (Issue A/C)."
+      },
+      "UpstreamConfigOut": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "auth_header": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auth Header"
+          },
+          "oauth_beta": {
+            "type": "boolean",
+            "title": "Oauth Beta",
+            "default": false
+          },
+          "model_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Model Map",
+            "default": {}
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "base_url"
+        ],
+        "title": "UpstreamConfigOut"
+      },
+      "UpstreamStatusOut": {
+        "properties": {
+          "mode": {
+            "type": "string",
+            "title": "Mode"
+          },
+          "connected": {
+            "type": "boolean",
+            "title": "Connected"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          },
+          "refresh_token_valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refresh Token Valid Until"
+          },
+          "expiring_soon": {
+            "type": "boolean",
+            "title": "Expiring Soon",
+            "default": false
+          },
+          "last_refresh": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LastRefreshOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "auto_refresh": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "degraded",
+                  "failed"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Refresh"
+          },
+          "creds_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Creds Source"
+          },
+          "base_url": {
+            "type": "string",
+            "title": "Base Url"
+          },
+          "last_synced": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Synced"
+          },
+          "last_checked": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Checked"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode",
+          "connected",
+          "base_url",
+          "last_checked"
+        ],
+        "title": "UpstreamStatusOut"
+      },
+      "UsageByKey": {
+        "properties": {
+          "api_key_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "credits": {
+            "type": "string",
+            "title": "Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "api_key_id",
+          "name",
+          "credits"
+        ],
+        "title": "UsageByKey"
+      },
+      "UsageByModel": {
+        "properties": {
+          "model_key": {
+            "type": "string",
+            "title": "Model Key"
+          },
+          "credits": {
+            "type": "string",
+            "title": "Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_key",
+          "credits"
+        ],
+        "title": "UsageByModel"
+      },
+      "UsageDailyPoint": {
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "title": "Date"
+          },
+          "credits": {
+            "type": "string",
+            "title": "Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "date",
+          "credits"
+        ],
+        "title": "UsageDailyPoint"
+      },
+      "UsageReport": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id"
+          },
+          "input_tokens": {
+            "type": "integer",
+            "title": "Input Tokens",
+            "default": 0
+          },
+          "output_tokens": {
+            "type": "integer",
+            "title": "Output Tokens",
+            "default": 0
+          },
+          "cache_read_tokens": {
+            "type": "integer",
+            "title": "Cache Read Tokens",
+            "default": 0
+          },
+          "cache_write_tokens": {
+            "type": "integer",
+            "title": "Cache Write Tokens",
+            "default": 0
+          },
+          "upstream_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upstream Request Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id"
+        ],
+        "title": "UsageReport"
+      },
+      "UserCreate": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "user"
+            ],
+            "title": "Role",
+            "default": "user"
+          },
+          "auth_source": {
+            "type": "string",
+            "enum": [
+              "local",
+              "ldap"
+            ],
+            "title": "Auth Source",
+            "default": "local"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "UserCreate"
+      },
+      "UserDetailOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "auth_source": {
+            "type": "string",
+            "title": "Auth Source"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "allowed_models": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Models"
+          },
+          "quota": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/QuotaOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "email",
+          "role",
+          "auth_source",
+          "is_active",
+          "created_at",
+          "allowed_models",
+          "quota"
+        ],
+        "title": "UserDetailOut"
+      },
+      "UserOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "auth_source": {
+            "type": "string",
+            "title": "Auth Source"
+          },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "username",
+          "display_name",
+          "email",
+          "role",
+          "auth_source",
+          "is_active",
+          "created_at"
+        ],
+        "title": "UserOut"
+      },
+      "UserUpdate": {
+        "properties": {
+          "display_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display Name"
+          },
+          "email": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "email"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admin",
+                  "user"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "is_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is Active"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "title": "UserUpdate"
+      },
+      "UserUsageRow": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "credits": {
+            "type": "string",
+            "title": "Credits"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "credits"
+        ],
+        "title": "UserUsageRow"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "WorkspaceFileOut": {
+        "properties": {
+          "file_id": {
+            "type": "string",
+            "title": "File Id"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "relpath": {
+            "type": "string",
+            "title": "Relpath"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "title": "Size Bytes"
+          },
+          "modified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Modified At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "file_id",
+          "name",
+          "relpath",
+          "size_bytes",
+          "modified_at"
+        ],
+        "title": "WorkspaceFileOut"
+      }
+    }
+  }
+}

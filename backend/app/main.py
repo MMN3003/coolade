@@ -29,6 +29,7 @@ from app.routers import (
 )
 from app.scheduler import start_scheduler
 from app.seed import run_seed
+from app.services.turns import mark_interrupted_streaming_as_failed
 from app.upstream import credentials as cli_credentials
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -43,9 +44,12 @@ _background_tasks: list[asyncio.Task] = []
 async def lifespan(app: FastAPI):
     async with async_session_factory() as db:
         await run_seed(db)
+        recovered = await mark_interrupted_streaming_as_failed(db)
+        if recovered:
+            logger.warning("startup recovery: marked %d interrupted turn(s) as failed/aborted_restart", recovered)
 
-    cli_credentials.sync_once()
-    _background_tasks.append(asyncio.create_task(cli_credentials.periodic_sync_task(60)))
+    await cli_credentials.startup_rehydrate()
+    _background_tasks.append(asyncio.create_task(cli_credentials.periodic_task(60)))
 
     scheduler = start_scheduler()
 
@@ -56,7 +60,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="EcoCode Gateway", version="1.1.0", lifespan=lifespan)
+app = FastAPI(title="EcoCode Gateway", version="1.2.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 if origins:
