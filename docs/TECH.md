@@ -3,11 +3,18 @@
 | | |
 |---|---|
 | **نام محصول** | EcoCode Gateway |
-| **نسخه سند** | 1.1 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۱) |
-| **تاریخ** | 2026-08-20 |
+| **نسخه سند** | 1.2 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۲) |
+| **تاریخ** | 2026-08-22 |
 | **مدیر فنی** | Opus (Tech Lead) |
 | **مبنا** | `docs/PRD.md` v0.2 (§1 توضیح آپ‌استریم، F1.0، F4.6، R1 منتفی) |
 | **مخاطب** | دو توسعه‌دهندهٔ Sonnet (Dev1: infra+backend، Dev2: frontend) |
+
+> **اصلاحیهٔ ۲ (2026-08-22، دو مسئلهٔ production):**
+> ۱) **Issue A — بقای نوبت چت مستقل از مرورگر (§۵.۱، §۵.۳، §۸، §۹، §۳):** اجرای CLI دیگر به درخواست SSE کوپل نیست. `POST messages` نوبت را می‌پذیرد (**202**) و یک task پس‌زمینهٔ asyncio آن را تا انتها اجرا و **همیشه** persist می‌کند؛ استریم همیشه از endpoint جدید `GET /api/conversations/{id}/stream` مصرف می‌شود که رویدادهای بافرشدهٔ نوبتِ در جریان را **از ابتدا replay** و سپس live دنبال می‌کند (ring buffer در حافظه + registry تک‌پروسه‌ای؛ بدون redis/celery). ردیف پیام دستیار از ابتدا با `status='streaming'` ساخته می‌شود (`complete`/`failed` در پایان)؛ در استارتاپ backend ردیف‌های `streaming` مانده → `failed` (هشدار restart). لیست گفتگوها فلگ `generating` می‌دهد (اسپینر سایدبار).
+> ۲) **Issue B — مالکیت چرخهٔ عمر توکن آپ‌استریم (§۴.۱):** پس از seed اولیه از فایل هاست، **backend خودش refresh می‌کند** (`POST $UPSTREAM_OAUTH_TOKEN_URL` با `grant_type=refresh_token` و `client_id` همان Claude Code؛ env جدید). توکن‌های چرخیده هم در volume `claude_state` (برای CLI) و هم رمزشده در `settings` (بقا بعد از از‌دست‌رفتن volume) ذخیره می‌شوند. sync هاست فقط وقتی import می‌کند که فایل هاست از آخرین seed **تغییر کرده** باشد (hash) — یعنی `claude login` دستی دوباره seed می‌کند ولی هرگز توکن‌های backend-managed را clobber نمی‌کند. اگر endpoint رفرش سرویس ثالث متفاوت بود → degrade شفاف به دستور «claude login روی سرور». وضعیت کامل در پنل ادمین.
+> ۳) **Issue C — تلاش مجدد نوبت شکست‌خورده (§۳، §۵.۱، §۸، §۹):** پیام دستیار شکست‌خورده با `status='failed'` + `error_code`/`error_reason` (دلیل کوتاه فارسی) persist می‌شود — شامل حالت `aborted_restart` استارتاپ. endpoint جدید `POST .../messages/{message_id}/retry` همان پیام کاربر قبلی را به‌صورت یک نوبت تازه دوباره اجرا می‌کند با **بازمصرف همان ردیف شکست‌خورده** (reset به `streaming`؛ نه حذف/ساخت مجدد)؛ فقط روی آخرین نوبت و فقط وقتی `failed`؛ از همان قفل busy و مسیر پس‌زمینه/reattach مسئلهٔ A عبور می‌کند؛ شارژ فقط به‌اندازهٔ اجرای واقعیِ retry. UI: دکمهٔ «تلاش مجدد» روی حباب خطا.
+> ۴) **مستندسازی موارد از قبل پیاده‌شده:** volume `claude_state` برای پایداری سشن‌های CLI + fallback خاموشِ resume در runner (§۵.۴)؛ `model_map` در `/internal/upstream-config` که handler قبل از relay اعمال می‌کند (§۶.۱)؛ نگاشت خطاهای 4xx/429/529 آپ‌استریم به کد/پیام فارسی در passthrough + side-channel گزارش usage واقعی (§۵.۲، §۶.۱).
+> ۵) تقسیم کار این اصلاحیه (A+B+C) در انتهای §۱۰.
 
 > **اصلاحیهٔ ۱ (2026-08-20، دستور تغییر مالک محصول):**
 > ۱) آپ‌استریم دیگر Claude خودِ Anthropic نیست؛ یک سرویس ثالث **Claude-سازگار** است (همان API؛ خود Claude Code CLI با آن کار می‌کند و اشتراک‌گذاری بین کاربران مجاز است → ریسک ToS منتفی). آدرس آپ‌استریم همه‌جا از `UPSTREAM_BASE_URL` می‌آید و هرگز hardcode نمی‌شود.
@@ -91,7 +98,7 @@
 - **چت وب** → **CLI Runner** داخل backend: هر پیام یک اجرای headless از Claude Code CLI در پوشهٔ کاربر. CLI خودش مستقیم با `UPSTREAM_BASE_URL` حرف می‌زند (با اعتبارنامهٔ sync‌شده). LiteLLM در این مسیر نیست.
 - **کلید API (Cline/…)** → backend → **LiteLLM** → custom upstream handler → HTTP مستقیم `POST $UPSTREAM_BASE_URL/v1/messages`.
 
-**ماژول ایزولهٔ آپ‌استریم** دو نقطهٔ تماس دارد که هر دو در یک پکیج (`backend/app/upstream/`) نگه‌داری می‌شوند: (الف) `credentials.py` — خواندن/sync/تشخیص انقضای اعتبارنامه (سه mode)، (ب) `litellm_handler.py` — custom handler که در کانتینر litellm mount می‌شود و از همان منطق credential استفاده می‌کند. تغییر مکانیزم سرویس آپ‌استریم فقط این پکیج را لمس می‌کند.
+**ماژول ایزولهٔ آپ‌استریم** دو نقطهٔ تماس دارد: (الف) `backend/app/upstream/credentials.py` — مالک کامل چرخهٔ عمر اعتبارنامه (seed از هاست، refresh خودکار، persist سه‌جایه — §۴.۱)، (ب) `litellm/ecocode_upstream_handler.py` — custom handler داخل کانتینر litellm که عمداً یک **relay گنگ** است: نه DB دارد، نه crypto، نه دسترسی به فایل اعتبارنامه؛ پیکربندی مؤثر (mode، base_url، توکن plaintext، `model_map`) را از endpoint داخلی backend یعنی `GET /internal/upstream-config` می‌گیرد (bearer = `LITELLM_MASTER_KEY`، فقط شبکهٔ داخلی، cache ۱۵ثانیه‌ای) و usage واقعی را به `POST /internal/usage-report` برمی‌گرداند (§۶.۱). تغییر مکانیزم سرویس آپ‌استریم فقط این دو فایل را لمس می‌کند.
 
 ### ۲.۲ سرویس‌های docker-compose
 
@@ -108,9 +115,11 @@
 backend:
   volumes:
     - users_data:/data/users                          # workspace کاربران (named volume)
-    - ${CLAUDE_CREDS_DIR:-~/.claude}:/host_claude:ro  # اعتبارنامهٔ Claude Code هاست (فقط‌خواندنی)
     - attachments_data:/data/attachments
+    - claude_state:/home/app/.claude                  # state سشن‌های CLI + اعتبارنامهٔ backend-managed
+    - ${CLAUDE_CREDS_DIR:-./data/claude-creds}:/host_claude:ro  # اعتبارنامهٔ Claude Code هاست (seed، فقط‌خواندنی)
 ```
+**volume `claude_state` (پیاده‌شده):** دایرکتوری `~/.claude` کانتینر را ماندگار می‌کند؛ دو کارکرد: (۱) state سشن‌های Claude Code (تا `--resume` بعد از recreate کانتینر کار کند — fallback نرم در §۵.۴)، (۲) فایل اعتبارنامهٔ backend-managed (§۴.۱).
 اسکریپت `mock-claude` (استاب CLI برای mode mock — بخش ۵.۶) داخل image بک‌اند در `/app/bin/mock-claude` قرار دارد؛ کانتینر جداگانه لازم ندارد.
 
 **قواعد شبکه:**
@@ -136,6 +145,9 @@ backend:
 ECOCODE_ENV=prod                      # prod | dev
 UPSTREAM_MODE=mock                    # mock | cli_creds | apikey   (پیش‌فرض dev/تأیید = mock؛ prod = cli_creds)
 UPSTREAM_BASE_URL=https://claude-compat.example.com   # آدرس سرویس Claude-سازگار — هرگز hardcode نمی‌شود
+# --- OAuth refresh (Issue B، §4.1) ---
+UPSTREAM_OAUTH_TOKEN_URL=             # خالی → پیش‌فرض: ${UPSTREAM_BASE_URL}/v1/oauth/token
+UPSTREAM_OAUTH_CLIENT_ID=9d1c250a-e61b-44d9-88ed-5944d1962f5e   # client_id خود Claude Code (پیش‌فرض)
 
 # --- CLI Runner ---
 CLAUDE_CREDS_DIR=/home/amin/.claude   # مسیر اعتبارنامهٔ Claude Code روی هاست (mount :ro)
@@ -297,16 +309,30 @@ CREATE TABLE conversations (
 CREATE INDEX idx_conv_user ON conversations(user_id, updated_at DESC) WHERE deleted_at IS NULL;
 
 -- ============ messages ============
+CREATE TYPE message_status AS ENUM ('complete', 'streaming', 'failed');   -- اصلاحیهٔ ۲
+
 CREATE TABLE messages (
     id              BIGSERIAL PRIMARY KEY,
     conversation_id BIGINT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     role            VARCHAR(20) NOT NULL,               -- 'user' | 'assistant'
-    content         TEXT NOT NULL,                      -- متن (markdown)
+    content         TEXT NOT NULL DEFAULT '',           -- متن (markdown)؛ برای ردیف streaming تا پایان خالی
     -- رویدادهای ساختاری سشن CLI (tool_use ها، فایل‌های ساخته‌شده و…) به‌صورت JSONB:
     content_blocks  JSONB,
+    -- Issue A: ردیف دستیار از لحظهٔ پذیرش نوبت با status='streaming' ساخته می‌شود؛
+    -- پایان موفق → 'complete'، خطا/timeout/از‌دست‌رفتن در restart → 'failed'.
+    status          message_status NOT NULL DEFAULT 'complete',
+    -- Issue C: فقط برای status='failed' پر می‌شوند؛ در retry پاک می‌شوند.
+    error_code      VARCHAR(40),   -- 'quota_exceeded' | 'upstream_rate_limited' | 'cli_error'
+                                   -- | 'timeout' | 'aborted_restart'
+    error_reason    TEXT,          -- دلیل کوتاه فارسی قابل‌نمایش در حباب خطا
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_msg_conv ON messages(conversation_id, created_at);
+CREATE INDEX idx_msg_conv      ON messages(conversation_id, created_at);
+CREATE INDEX idx_msg_streaming ON messages(status) WHERE status = 'streaming';
+-- استارتاپ backend (بازیابی از crash/restart):
+--   UPDATE messages SET status='failed', error_code='aborted_restart',
+--          error_reason='سرویس هنگام تولید پاسخ راه‌اندازی مجدد شد.' WHERE status='streaming';
+-- تا UI هرگز روی نوبتِ گم‌شده برای همیشه منتظر نماند (کاوئت restart در §۵.۱) و retry ممکن باشد.
 
 -- ============ attachments ============
 -- فایل‌های آپلودشده در گفتگو (F4.4). فایل داخل workspace کاربر کپی می‌شود
@@ -351,10 +377,15 @@ CREATE TABLE settings (
     updated_by      BIGINT REFERENCES users(id) ON DELETE SET NULL
 );
 -- کلیدهای شناخته‌شده:
---   upstream.mode                = 'cli_creds'|'apikey'|'mock'  (override runtime؛ env اولویت دارد)
---   upstream.apikey        (enc) = توکن دستی سرویس آپ‌استریم (mode apikey)
---   quota.warn_threshold         = '0.8'  (هشدار ۸۰٪)
--- توجه: در mode cli_creds هیچ secret در DB نیست؛ منبع = فایل mount‌شدهٔ هاست.
+--   upstream.mode                    = 'cli_creds'|'apikey'|'mock'  (override runtime؛ env اولویت دارد)
+--   upstream.apikey            (enc) = توکن دستی سرویس آپ‌استریم (mode apikey)
+--   -- Issue B: نسخهٔ پشتیبان رمزشدهٔ اعتبارنامهٔ backend-managed (بقا بعد از از‌دست‌رفتن volume):
+--   upstream.cli.access_token  (enc)
+--   upstream.cli.refresh_token (enc)
+--   upstream.cli.expires_at          = ISO timestamp
+--   upstream.cli.host_seed_hash      = sha256 آخرین فایل هاستِ importشده (سیاست seed در §۴.۱)
+--   upstream.cli.last_refresh        = JSON: {at, ok, error?}
+--   quota.warn_threshold             = '0.8'  (هشدار ۸۰٪)
 ```
 
 **نکات طراحی:**
@@ -375,30 +406,58 @@ CREATE TABLE settings (
 | `apikey` | توکن دستی، رمزشده در `settings` | CLI runner (از طریق env توکن) + LiteLLM handler | وقتی سرویس آپ‌استریم کلید مستقیم بدهد |
 | `mock` | — | mock-claude (چت وب) + mock-upstream (passthrough) | dev / تأیید E2E بدون credential |
 
-### ۴.۱ mode `cli_creds` — استفادهٔ مجدد از اعتبارنامهٔ Claude Code هاست
+### ۴.۱ mode `cli_creds` — seed از هاست، مالکیت چرخهٔ عمر با backend (بازطراحی اصلاحیهٔ ۲)
 
-**پیش‌فرض:** ادمین قبلاً روی همین سرور یک‌بار `claude login` (یا `claude setup-token`) را علیه سرویس Claude-سازگار انجام داده و اعتبارنامه در `~/.claude/.credentials.json` (یا مسیر معادل، قابل تنظیم با `CLAUDE_CREDS_DIR`) ذخیره شده است.
+**درس production:** طراحی v1.1 (sync یک‌طرفهٔ ۶۰ثانیه‌ای، هاست منبع حقیقت) دو بار سرویس را زمین زد: access token ~۸ساعته منقضی می‌شود و refresh token فایل هاست توسط بازیگرهای دیگر rotate/باطل می‌شود؛ گیت‌وی می‌مُرد تا یک انسان `claude login` بزند. از این نسخه **پس از seed اولیه، backend خودش مالک توکن است**.
+
+**پیش‌فرض:** ادمین یک‌بار روی همین سرور `claude login` را علیه سرویس Claude-سازگار انجام داده (`~/.claude/.credentials.json`، قابل تنظیم با `CLAUDE_CREDS_DIR`).
 
 ```
-هاست: ~/.claude/.credentials.json ──(mount :ro)──▶ کانتینر backend: /host_claude/.credentials.json
-                                                          │ sync یک‌طرفه (entrypoint + هر 60s)
-                                                          ▼
-                                        /home/app/.claude/.credentials.json  (HOME کانتینر)
-                                          ├──▶ Claude Code CLI (چت وب): خودش می‌خواند
-                                          └──▶ upstream package: access_token را استخراج و
-                                               به LiteLLM handler می‌دهد (مسیر passthrough)
+                       ┌───── seed (فقط وقتی فایل هاست «تغییر کرده») ─────┐
+هاست: ~/.claude/.credentials.json ──(mount :ro /host_claude)──▶ TokenManager (backend)
+                                                                    │  مالک چرخهٔ عمر:
+        ┌───────────────────────────────────────────────────────────┤  refresh خودکار
+        ▼ persist                          ▼ persist                │  قبل از انقضا
+ claude_state volume                 settings (enc)                 │
+ /home/app/.claude/.credentials.json  upstream.cli.*                │
+   └──▶ Claude Code CLI خودش می‌خواند   └──▶ بازسازی فایل بعد از     │
+        (چت وب)                             از‌دست‌رفتن volume        │
+                                                                    ▼ serve
+                                              /internal/upstream-config → litellm handler (passthrough)
 ```
 
-- **sync یک‌طرفه هاست→کانتینر:** mount مستقیم ro به `$HOME/.claude` کافی نیست چون CLI به دایرکتوری config خودش نیاز به نوشتن دارد؛ پس فایل ro در `/host_claude` mount و توسط یک task پس‌زمینهٔ backend (هر ۶۰ ثانیه + هنگام استارت) به HOME کپی می‌شود. **هاست منبع حقیقت است**: اگر CLI روی هاست توکن را refresh کند، حداکثر ۶۰ ثانیه بعد کانتینر هم دارد.
-- **refresh/انقضا:** فایل اعتبارنامه شامل `expiresAt` (و refresh token) است. خود CLI در حین اجرا در صورت نیاز refresh می‌کند (در کپی داخل کانتینر). upstream package قبل از هر استفادهٔ passthrough، `expiresAt` را چک می‌کند؛ اگر منقضی و نسخهٔ هاست جدیدتر بود → sync فوری؛ اگر هر دو منقضی → وضعیت «قطع» و خطای 503 با پیام فارسی.
-- **نمایش وضعیت (F1.2):** `GET /api/admin/upstream/status`:
+**اجزای TokenManager (همه داخل ماژول ایزولهٔ `app/upstream/credentials.py`):**
+
+1. **Seed از هاست — فقط بر تغییر:** hash محتوای `/host_claude/.credentials.json` با `settings.upstream.cli.host_seed_hash` مقایسه می‌شود (چک در استارتاپ + هر ۶۰ ثانیه). **فقط اگر متفاوت بود** import می‌شود (access+refresh+expiresAt) و hash جدید ثبت می‌گردد. یعنی: `claude login` دستی روی هاست = re-seed فوری گیت‌وی؛ ولی فایل هاستِ کهنه **هرگز** توکن‌های backend-managed را clobber نمی‌کند.
+2. **Refresh خودکار:** task دوره‌ای (هر ۶۰ ثانیه چکِ) `expires_at`؛ وقتی `< now + 10min` → با قفل single-flight:
+   - ابتدا فایل volume دوباره خوانده می‌شود (خود CLI ممکن است حین اجرا refresh کرده باشد — اگر تازه‌تر بود، همان adopt و persist می‌شود و تمام).
+   - وگرنه: `POST $UPSTREAM_OAUTH_TOKEN_URL` (پیش‌فرض `${UPSTREAM_BASE_URL}/v1/oauth/token`) با body:
+     ```json
+     { "grant_type": "refresh_token", "refresh_token": "<current>",
+       "client_id": "$UPSTREAM_OAUTH_CLIENT_ID" }
+     ```
+     (`client_id` پیش‌فرض = همانی که Claude Code استفاده می‌کند؛ سرویس Claude-سازگار همین flow را برای توکن‌های Claude Code پیاده کرده است.)
+   - پاسخ (`access_token`, `refresh_token` چرخیده, `expires_in`) **در هر دو جا** persist می‌شود: فایل `claude_state` (همان شکل on-disk خود Claude Code — `claudeAiOauth.accessToken/refreshToken/expiresAt` — تا CLI بی‌تغییر بخواند) + رمزشده در `settings.upstream.cli.*` (بقا بعد از از‌دست‌رفتن volume). نتیجهٔ هر refresh در `upstream.cli.last_refresh` ثبت می‌شود.
+3. **بازیابی در استارتاپ:** اگر فایل volume نبود ولی `settings.upstream.cli.*` بود → فایل از settings بازسازی می‌شود (و بالعکس، تازه‌ترین برنده است بر اساس `expires_at`).
+4. **Serve:** توکن معتبر لحظه‌ای به CLI runner (از طریق همان فایل HOME) و به litellm handler (از طریق `/internal/upstream-config`) داده می‌شود.
+5. **صداقت در شکست (graceful degradation):** اگر endpoint رفرشِ این سرویس ثالث فرق داشت (404/شکل ناشناخته) → auto-refresh غیرفعال، یک بار log، و رفتار به سیاست قبلی برمی‌گردد: sync هاست + دستور فارسی «روی سرور `claude login` را اجرا کنید». اگر refresh با `invalid_grant`/401 رد شد (refresh token باطل/منقضی) → وضعیت «قطع» + همان CTA. همه‌چیز داخل ماژول credentials می‌ماند؛ هیچ لایهٔ دیگری تغییر نمی‌کند.
+
+**نمایش وضعیت (F1.2):** `GET /api/admin/upstream/status` (فیلدهای جدید):
 ```json
-{ "mode": "cli_creds", "connected": true, "expires_at": "2026-09-01T10:00:00Z",
-  "expiring_soon": false, "creds_source": "/host_claude/.credentials.json",
-  "base_url": "https://claude-compat.example.com", "last_synced": "2026-08-20T09:00:00Z" }
+{ "mode": "cli_creds", "connected": true,
+  "expires_at": "2026-08-22T18:00:00Z",            
+  "refresh_token_valid_until": null,                 
+  "expiring_soon": false,
+  "last_refresh": { "at": "2026-08-22T09:40:00Z", "ok": true, "error": null },
+  "auto_refresh": "active",                          
+  "creds_source": "backend-managed (seeded from /host_claude)",
+  "base_url": "https://claude-compat.example.com" }
 ```
-- **اتصال مجدد (F1.3):** اگر منقضی شد، پنل ادمین بنر می‌دهد: «روی سرور دستور `claude login` را دوباره اجرا کنید». پس از لاگین مجدد هاست، sync خودکار وضعیت را سبز می‌کند — هیچ داده‌ای از دست نمی‌رود و restart لازم نیست.
-- **هیچ credential به مرورگر یا DB نمی‌رود.**
+- `refresh_token_valid_until`: اکثر سرویس‌ها انقضای refresh token را گزارش نمی‌کنند → `null` و در UI «نامشخص». اگر گزارش شد، نمایش داده می‌شود.
+- `auto_refresh`: `active` | `degraded` (endpoint ناسازگار) | `failed` (refresh token باطل).
+- **CTA فارسی فقط وقتی refresh واقعاً ناممکن است** (`degraded` منقضی‌شده یا `failed`): «توکن قابل تمدید خودکار نیست؛ روی سرور دستور `claude login` را اجرا کنید.» در حالت عادی هیچ اقدامی از ادمین خواسته نمی‌شود.
+
+**اتصال مجدد (F1.3):** پس از `claude login` مجدد روی هاست، سیاست seed-بر-تغییر ظرف ≤۶۰ ثانیه گیت‌وی را سبز می‌کند — بدون restart و بدون از‌دست‌رفتن داده. **هیچ credential به مرورگر نمی‌رود؛ در DB فقط رمزشده.**
 
 ### ۴.۲ mode `apikey`
 
@@ -427,37 +486,58 @@ LiteLLM handler درخواست را به شکل Messages API به `POST $UPSTREA
 
 هر دو سطح از یک **pipeline مشترک** auth/ACL/quota/ledger در backend عبور می‌کنند.
 
-### ۵.۱ سطح (الف) — چت وب از طریق CLI Runner
+### ۵.۱ سطح (الف) — چت وب از طریق CLI Runner (بازطراحی اصلاحیهٔ ۲: نوبتِ جدا از مرورگر)
+
+**اصل:** از لحظه‌ای که POST پذیرفته شد، نوبت **مستقل از client** تا انتها اجرا و persist می‌شود. قطع/تعویض تب هیچ اثری روی اجرا ندارد؛ client هر لحظه می‌تواند دوباره وصل شود و استریم را **از ابتدای نوبت** ببیند.
 
 ```
-Browser ──(session cookie)──▶ nginx /api/conversations/{id}/messages (POST, stream)
-   ▼ backend
+Browser ──(session cookie)──▶ POST /api/conversations/{id}/messages   {content}
+   ▼ backend (همه پیش از پذیرش، سنکرون)
  [۱ AUTH]   session cookie → user. نامعتبر/غیرفعال → 401.
- [۲ ACL ]   مدل گفتگو در model_policies[user]؟ نه → 403 «مدل مجاز نیست».
- [۳ QUOTA pre-check]
-            used = SUM(usage_ledger.credits WHERE user AND created_at >= quota.period_start)
-            budget = quota.limit_credits + quota.bonus_credits
-            used >= budget → 429 + پیام فارسی + audit: request.denied_quota.
- [۴ WORKSPACE]  اطمینان از وجود /data/users/<user_id>/workspace (ساخت 0700 در اولین بار).
-            attachmentهای پیام (در صورت وجود) داخل workspace کپی شده‌اند (بخش attachments).
- [۵ ذخیرهٔ پیام کاربر]  message(role=user) در DB.
- [۶ RUN CLI]  spawn پروسهٔ Claude Code headless (مشخصات کامل ۵.۴):
-            claude -p "<متن پیام>" --output-format stream-json --verbose
-                   --model <models.upstream_model>
-                   [--resume <conversations.cli_session_id>]      # اگر ادامهٔ گفتگوست
-            cwd = workspace کاربر
- [۷ STREAM] رویدادهای stream-json خط‌به‌خط از stdout پروسه خوانده و به پروتکل SSE ما
-            ترجمه می‌شوند (نگاشت ۵.۳) → مرورگر به‌صورت تدریجی رندر می‌کند.
-            رویداد system:init → session_id استخراج و در conversations.cli_session_id ذخیره
-            (فقط بار اول؛ در resume همان می‌ماند).
- [۸ ثبت مصرف post-response]
-            رویداد پایانی result شامل usage است (input_tokens, output_tokens,
-            cache_read_input_tokens, ...) →
-            credits = input/1000*w_in + output/1000*w_out + cache_read/1000*w_cache
-            INSERT usage_ledger (surface='web_chat', request_id=cli_session_id).
-            message(role=assistant) با متن نهایی + content_blocks (خلاصهٔ tool_useها) ذخیره.
-            conversation.updated_at لمس.
+ [۲ BUSY]   نوبت فعال برای همین گفتگو در registry؟ → 409 chat_busy.
+ [۳ ACL ]   مدل گفتگو در model_policies[user]؟ نه → 403 «مدل مجاز نیست».
+ [۴ QUOTA pre-check]  used>=budget → 429 + پیام فارسی + audit: request.denied_quota.
+ [۵ ذخیرهٔ ردیف‌ها]  message(role=user, status=complete) +
+            message(role=assistant, content='', status='streaming')   ← ردیف از ابتدا
+ [۶ SPAWN]  asyncio.create_task(run_turn) + ثبت در TurnRegistry (در حافظه):
+            registry[conversation_id] = TurnState{ assistant_message_id,
+                                                   events: ring buffer, cond, done }
+   ◀── پاسخ فوری: 202 {assistant_message_id, generating: true}
+
+── task پس‌زمینه (بدون هیچ وابستگی به اتصال client) ──
+ [۷ RUN CLI]  spawn پروسهٔ Claude Code headless (مشخصات ۵.۴):
+            claude -p "<متن>" --output-format stream-json --verbose
+                   --model <upstream_model> [--resume <cli_session_id>]
+            cwd = workspace کاربر (ساخت 0700 در اولین بار؛ attachmentها قبلاً کپی شده‌اند).
+ [۸ BUFFER] هر رویداد ترجمه‌شده (نگاشت ۵.۳) به ring buffer نوبت append و
+            cond.notify_all() → همهٔ streamهای متصل، live دنبال می‌کنند.
+ [۹ FINALIZE] رویداد result → usage → credits → INSERT usage_ledger
+            (surface='web_chat', request_id=cli_session_id).
+            UPDATE ردیف assistant: content=متن نهایی، content_blocks، status='complete'
+            (خطا/timeout → status='failed' + error_code/error_reason فارسی + رویداد error در buffer).
+            conversations.cli_session_id (بار اول) + updated_at.
+            registry حذف پس از terminal event (buffer تا بسته‌شدن آخرین مشترک زنده می‌ماند).
+
+── مصرف استریم (attach/reattach، هر تعداد بار) ──
+Browser ──▶ GET /api/conversations/{id}/stream        (SSE)
+            نوبت فعال هست → replay کل buffer از رویداد ۰، سپس follow زنده تا terminal.
+            نوبت فعال نیست → یک رویداد `idle` و بستن (client از GET conversation
+            پیام‌های نهایی را دارد).
 ```
+
+**انتخاب مکانیزم reattach (قطعی): ring buffer در حافظه، نه persist تدریجی.** توجیه: (الف) backend تک‌پروسه است (uvicorn یک worker) پس registry در حافظه کافی و «boring» است — بدون redis/celery؛ (ب) persist تدریجی هر delta یعنی write amplification روی Postgres به ازای هر توکن، بی‌فایده چون تنها مصرف‌کنندهٔ رویدادهای میانی همین replay است؛ (ج) تضمین ماندگاری فقط برای نوبت تمام‌شده لازم است (متن نهایی + usage) که در FINALIZE اتمیک انجام می‌شود. سقف buffer: ۴۰۹۶ رویداد / ~۴MB به ازای نوبت (بیش از آن: deltaهای قدیمی متن‌شان merge می‌شود تا replay همچنان کامل بماند).
+
+**کاوئت restart (پذیرفته‌شده):** اگر backend وسط نوبت restart شود، task و buffer از بین می‌روند. در استارتاپ همهٔ ردیف‌های `streaming` → `failed` با `error_code='aborted_restart'` (شکل کامل در §۳) → UI به‌جای انتظار ابدی، حباب خطا با دکمهٔ «تلاش مجدد» (Issue C) نشان می‌دهد. (مصرفی ثبت نمی‌شود چون رویداد result نیامده.)
+
+**فلگ `generating`:** در `GET /api/conversations` و `GET /api/conversations/{id}` به ازای هر گفتگو: `generating = (id in TurnRegistry)`. سایدبار اسپینر نشان می‌دهد؛ ورود به گفتگوی در حال تولید → اتصال خودکار به `/stream`.
+
+**تلاش مجدد نوبت شکست‌خورده (Issue C):** `POST /api/conversations/{id}/messages/{message_id}/retry` —
+
+- **گاردها (سنکرون، پیش از پذیرش):** پیام باید (الف) متعلق به همین گفتگو و همین کاربر، (ب) `role='assistant'`، (ج) `status='failed'`، (د) **آخرین پیام گفتگو** باشد (نوبت‌های قدیمی‌تر retry ندارند — 409 `not_retryable`)؛ (ه) گفتگو busy نباشد (409 `chat_busy`)؛ سپس همان pre-checkهای POST عادی (ACL مدل، quota → 403/429).
+- **معناشناسی (قطعی): بازمصرف همان ردیف، نه حذف/ساخت مجدد.** ردیف شکست‌خورده reset می‌شود: `status='streaming'`, `content=''`, `content_blocks=NULL`, `error_code=NULL`, `error_reason=NULL` — و نوبت تازه‌ای با **متن همان پیام user ماقبلش** از همان مسیر پس‌زمینهٔ Issue A (registry، buffer، `GET /stream`) اجرا می‌شود. پاسخ: **202** `{assistant_message_id: <همان id>, generating:true}`. توجیه انتخاب supersede-in-place: id پیام برای client پایدار می‌ماند (همان حبابی که خطا نشان می‌داد به حالت استریم برمی‌گردد)، ترتیب/شمارهٔ پیام‌ها دست نمی‌خورد و ردیف orphan تولید نمی‌شود؛ نگه‌داشتن تاریخچهٔ شکست‌ها ارزش محصولی ندارد (در audit_log نیست و لازم نیست باشد).
+- **resume:** مثل هر نوبت، از `conversations.cli_session_id` موجود استفاده می‌شود (+ fallback خاموش §۵.۴). در شکستِ نوع timeout ممکن است نوبت قبلی اثر جزئی روی workspace گذاشته باشد؛ retry همان prompt را در نوبت جدید می‌فرستد — پذیرفته و مستند.
+- **بدون شارژ مضاعف:** credit فقط از رویداد `result` موفق ثبت می‌شود؛ نوبت شکست‌خورده چیزی در ledger ننوشته (رویداد result نداشته یا `is_error` بوده)، پس retry فقط مصرف واقعی اجرای خودش را می‌نویسد.
+- **idempotency:** چون retry اولین کارش reset ردیف به `streaming` و ثبت در registry است، retry دوم هم‌زمان به گارد (ج)/(ه) می‌خورد (409).
 
 **ادامهٔ گفتگو (F4.5):** با `--resume <cli_session_id>` خود CLI کل context قبلی سشن را دارد؛ ما تاریخچه را دوباره نمی‌فرستیم. تاریخچهٔ DB ما برای نمایش UI و ماندگاری است، نه برای context.
 
@@ -477,9 +557,23 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
             اگر endpoint = /v1/chat/completions، LiteLLM خودش شکل OpenAI را ترجمه می‌کند.
             metadata: {user_id, api_key_id, model_key, surface:api}.
  [۵ STREAM] SSE از آپ‌استریم تا Cline پیوسته proxy می‌شود (هر دو فرمت stream پشتیبانی می‌شوند).
- [۶ ثبت مصرف]  از فیلد usage پاسخ آپ‌استریم؛ همان فرمول؛ api_key_id پر.
+ [۶ ثبت مصرف]  usage واقعی از side-channel داخلی (§۶.۱) با کلید x-ecocode-request-id؛
+            fallback: بلوک usage خود litellm. همان فرمول؛ api_key_id پر.
             (چت وب و API از یک سهمیهٔ کاربر کم می‌شوند — F5.3.)
 ```
+
+**نگاشت خطای آپ‌استریم (پیاده‌شده — `routers/passthrough.py` + handler):** handler هر پاسخ non-2xx آپ‌استریم را به exception تایپ‌دار litellm با **همان status واقعی** تبدیل می‌کند (وگرنه litellm همه را 500 می‌کرد)؛ backend به client برمی‌گرداند:
+
+| status آپ‌استریم | code | پیام فارسی |
+|---|---|---|
+| 401 | `upstream_auth_error` | احراز هویت نزد سرویس بالادستی ناموفق بود؛ تنظیمات اعتبارنامه را بررسی کنید. |
+| 403 | `upstream_forbidden` | سرویس بالادستی این درخواست را مجاز نمی‌داند. |
+| 404 | `upstream_not_found` | مدل یا مسیر درخواستی در سرویس بالادستی یافت نشد. |
+| 429 | `upstream_rate_limited` | سرویس بالادستی فعلاً شلوغ است؛ کمی بعد دوباره تلاش کنید. |
+| 529 | `upstream_overloaded` | سرویس بالادستی زیر بار سنگین است؛ کمی بعد دوباره تلاش کنید. |
+| سایر | 502 `upstream_error` | خطا در ارتباط با سرویس بالادستی رخ داد. |
+
+نکتهٔ streaming: litellm خطای بعد از شروعِ استریم را به‌صورت HTTP 200 + یک رویداد `data:{"error":...,"code":"429"}` گزارش می‌کند؛ backend **قبل از تعهد به 200 خودش، اولین رویداد SSE را peek می‌کند** (fail-fast) تا 429/401 واقعی به client برسد نه یک استریم خالی.
 
 **نکتهٔ کلیدی:** auth/ACL/quota/ledger **در backend ما** اتفاق می‌افتد، نه در LiteLLM و نه در CLI. Cline هرگز مستقیم به LiteLLM یا آپ‌استریم نمی‌رسد (PRD بند ۴).
 
@@ -494,6 +588,9 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 | بلوک `tool_use` در پیام assistant (مثلاً Write/Edit) | `event: tool` `{name, summary}` — UI به‌صورت «در حال ساخت فایل …» نشان می‌دهد |
 | `{"type":"result","usage":{...},"is_error":false}` | `event: done` `{credits_used, files_changed[]}` |
 | `{"type":"result","is_error":true}` یا خطای پروسه | `event: error` `{message فارسی}` |
+| — (فقط `GET /stream` وقتی نوبت فعالی نیست) | `event: idle` `{}` و بستن اتصال |
+
+**قرارداد replay (اصلاحیهٔ ۲):** `GET /api/conversations/{id}/stream` اگر نوبت فعال باشد، همهٔ رویدادهای بافرشده را از رویداد صفر (شامل `start`) بازپخش و سپس زنده دنبال می‌کند تا `done`/`error`. client لازم نیست بداند وسط نوبت وصل شده — رندر replay و live یکسان است. `POST messages` دیگر SSE برنمی‌گرداند (202 JSON — §۵.۱).
 
 مسیر passthrough (۵.۲) دست‌نخورده SSE خام آپ‌استریم را forward می‌کند (سازگاری ابزارها)؛ این نگاشت فقط مال چت وب است.
 
@@ -510,7 +607,8 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 | **انتخاب مدل** | `models.upstream_model` گفتگو → `--model`. ACL قبل از spawn چک شده. |
 | **پرمیشن ابزارها** | **بدون `--dangerously-skip-permissions`.** به‌جای آن allowlist صریح: `--allowedTools "Read(./**),Write(./**),Edit(./**),Glob,Grep"` و `--disallowedTools "Bash,WebFetch,WebSearch"`. **توجیه:** (الف) headless هرگز روی prompt پرمیشن بلاک نمی‌شود چون هر چیزِ مجاز auto-approve است و باقی رد می‌شود؛ (ب) `Bash` عملاً فرار از confinement پوشه است (می‌تواند workspace کاربر دیگر را بخواند) پس در فاز ۱ ممنوع؛ (ج) `WebFetch/WebSearch` بسته تا داده از سازمان بیرون نرود و مصرف قابل پیش‌بینی بماند. الگوهای `./**` دسترسی فایل را به workspace محدود می‌کنند. فاز ۲ در صورت نیازِ سناریوهای کدنویسی، `Bash` را با sandbox سطح‌OS (bubblewrap) اضافه می‌کند — نه زودتر. |
 | **usage** | از رویداد `result` (فیلد `usage`) → فرمول ضمیمهٔ الف. `total_cost_usd` نادیده گرفته می‌شود (واحد ما credit است). |
-| **پاک‌سازی** | on-disconnect مرورگر: پروسه kill نمی‌شود (پاسخ تمام و ذخیره می‌شود) — کاربر با reload ادامه را در تاریخچه می‌بیند. |
+| **قطع مرورگر** | هیچ اثری ندارد — نوبت در task پس‌زمینه است (§۵.۱)؛ client با `GET /stream` هر لحظه reattach می‌کند. |
+| **پایداری سشن + fallback resume** (پیاده‌شده) | state سشن‌های CLI روی volume `claude_state` ماندگار است. اگر با وجود آن، CLI شناسهٔ ذخیره‌شده را نشناسد (خطای «No conversation found with session ID» — مثلا state پیش از volume-backed شدن گم شده)، runner **یک‌بار** بدون `--resume` دوباره اجرا می‌کند: رویداد `start` تلاش اول بی‌صدا دور ریخته می‌شود، کاربر یک استریم عادی روی سشن تازه می‌بیند (از دست رفتن context پذیرفته و log می‌شود) و session id جدید persist می‌گردد. |
 
 ### ۵.۵ reset دوره‌ای و به‌روزرسانی مصرف
 
@@ -548,12 +646,10 @@ model_list:
       model: ecocode-upstream/claude-haiku
 
 litellm_settings:
-  # custom handler = بخشی از پکیج ایزولهٔ upstream (بخش ۲.۱).
-  # سه mode (cli_creds/apikey/mock) را با env سوییچ می‌کند؛
-  # base_url = os.environ/UPSTREAM_BASE_URL  (mode mock → http://mock-upstream:8080)
+  # custom handler = relay گنگ (بخش ۲.۱)؛ پیکربندی مؤثر را از backend می‌گیرد.
   custom_provider_map:
     - provider: "ecocode-upstream"
-      custom_handler: ecocode_upstream_handler.adapter   # فایل mount‌شده در کانتینر
+      custom_handler: ecocode_upstream_handler.adapter   # فایل mount‌شده (ro) در کانتینر
   drop_params: true
 
 general_settings:
@@ -562,7 +658,14 @@ general_settings:
   # budget به‌عنوان کمربند ایمنی دوم فعال است ولی authoritative نیست (بخش ۶.۳).
 ```
 
-کانتینر litellm این mountها را دارد: فایل handler + volume اعتبارنامهٔ sync‌شده (فقط‌خواندنی، برای خواندن access token در mode cli_creds). **handler تنها فایلی است که با تغییر مکانیزم سرویس آپ‌استریم عوض می‌شود** (به‌همراه `credentials.py` هم‌پکیجش).
+**رفتار پیاده‌شدهٔ handler (relay گنگ):** کانتینر litellm نه DB دارد، نه crypto، نه فایل اعتبارنامه. handler به ازای هر درخواست (با cache ۱۵ثانیه‌ای):
+1. `GET backend:/internal/upstream-config` (bearer = `LITELLM_MASTER_KEY`؛ فقط شبکهٔ داخلی، هرگز پشت nginx expose نمی‌شود) → `{mode, base_url, api_key, auth_header, oauth_beta, model_map}`. backend اینجا env/settings/TokenManager را resolve می‌کند؛ در دسترس‌نبودن لحظه‌ای backend → fallback امن به mock بدون credential.
+2. **اعمال `model_map` (پیاده‌شده):** نگاشت `model_key` داخلی → `upstream_model` (مثلاً `claude-sonnet` → `claude-sonnet-5`) قبل از relay اعمال می‌شود؛ بدون آن کلید داخلی به سرویس واقعی نشت می‌کرد و 404 می‌گرفت.
+3. relay به `POST {base_url}/v1/messages` با شکل اصیل Messages API (هدرها طبق §۴.۴).
+4. **گزارش usage واقعی (پیاده‌شده):** usage کامل پاسخ آپ‌استریم (شامل cache_read/cache_write که schema چانک‌های streaming litellm حملش نمی‌کند) به `POST backend:/internal/usage-report` با کلید `x-ecocode-request-id` برمی‌گردد؛ backend همین را در ledger می‌نویسد (fallback: usage خود litellm). → usage_ledger مستقل از حسابداری litellm، authoritative می‌ماند.
+5. **خطاها:** non-2xx آپ‌استریم به exception تایپ‌دار litellm با status واقعی re-raise می‌شود (جدول §۵.۲).
+
+**handler (+ `credentials.py` در backend) تنها فایل‌هایی هستند که با تغییر مکانیزم سرویس آپ‌استریم عوض می‌شوند.**
 
 ### ۶.۲ چرخهٔ عمر virtual key (admin API)
 
@@ -655,12 +758,14 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 ### چت و تاریخچه (کاربر)
 | متد | مسیر | هدف |
 |---|---|---|
-| GET | `/api/conversations` | لیست گفتگوهای کاربر (paginate, search با `?q=`) |
+| GET | `/api/conversations` | لیست گفتگوهای کاربر (paginate, search با `?q=`) — هر آیتم شامل **`generating: bool`** |
 | POST | `/api/conversations` | ساخت گفتگوی جدید (`{title?, model_key}`) |
-| GET | `/api/conversations/{id}` | جزئیات + پیام‌ها (فقط مالک) |
+| GET | `/api/conversations/{id}` | جزئیات + پیام‌ها (فقط مالک) + `generating` + `status` هر پیام (`complete`/`streaming`/`failed`) |
 | PATCH | `/api/conversations/{id}` | تغییر عنوان / مدل |
 | DELETE | `/api/conversations/{id}` | حذف (soft) — سشن CLI مرتبط دیگر resume نمی‌شود |
-| POST | `/api/conversations/{id}/messages` | **ارسال پیام → اجرای CLI runner → پاسخ SSE استریم** (pipeline ۵.۱، پروتکل ۵.۳) |
+| POST | `/api/conversations/{id}/messages` | **پذیرش نوبت** (pipeline ۵.۱): اعتبارسنجی سنکرون (401/403/409/429) سپس **202** `{assistant_message_id, generating:true}` — پاسخ SSE نمی‌دهد؛ اجرای CLI در پس‌زمینه ادامه می‌یابد حتی اگر client برود |
+| GET | `/api/conversations/{id}/stream` | **استریم/reattach (SSE، پروتکل ۵.۳):** نوبت فعال → replay بافر از ابتدا + دنبالهٔ زنده تا `done`/`error`؛ نوبت فعال نیست → `event: idle` و بستن. idempotent — هر تعداد بار و از هر تب |
+| POST | `/api/conversations/{id}/messages/{message_id}/retry` | **تلاش مجدد نوبت شکست‌خورده** (Issue C، معناشناسی §۵.۱): فقط آخرین پیامِ `failed`؛ reset همان ردیف به `streaming` و اجرای نوبت تازه با متن پیام user قبلی → **202** `{assistant_message_id, generating:true}`؛ خطاها: 409 `not_retryable`/`chat_busy`، 403، 429 |
 | POST | `/api/conversations/{id}/attachments` | آپلود فایل (multipart) → کپی داخل workspace + attachment id |
 | GET | `/api/attachments/{id}` | دانلود فایل پیوست (فقط مالک گفتگو) |
 
@@ -725,7 +830,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 ### ادمین — اتصال آپ‌استریم (بخش ۴)
 | متد | مسیر | هدف |
 |---|---|---|
-| GET | `/api/admin/upstream/status` | وضعیت اتصال (mode, connected, expires_at, base_url, creds_source) |
+| GET | `/api/admin/upstream/status` | وضعیت اتصال (mode, connected, expires_at, **refresh_token_valid_until, last_refresh, auto_refresh**, base_url, creds_source — شکل کامل در §۴.۱) |
 | PUT | `/api/admin/upstream/apikey` | ست توکن دستی (mode apikey؛ رمزشده ذخیره می‌شود) |
 | PUT | `/api/admin/upstream/mode` | سوییچ mode (`cli_creds`/`apikey`/`mock`) + audit `upstream.mode_change` |
 
@@ -734,7 +839,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 |---|---|---|
 | GET | `/api/health` | liveness: `{status, db, litellm, upstream_mode, upstream_connected, cli_available}` |
 
-**قرارداد خطا (یکنواخت):** بدنهٔ `{ "error": { "code": "quota_exceeded", "message": "پیام فارسی قابل‌نمایش" } }` با status مناسب (401/403/409/429/400/503/500). Dev2 روی `error.message` رندر می‌کند و روی `error.code` منطق. کد `chat_busy` (409) برای پیام هم‌زمان در یک گفتگو.
+**قرارداد خطا (یکنواخت):** بدنهٔ `{ "error": { "code": "quota_exceeded", "message": "پیام فارسی قابل‌نمایش" } }` با status مناسب (401/403/409/429/400/502/503/500). Dev2 روی `error.message` رندر می‌کند و روی `error.code` منطق. کدهای ویژه: `chat_busy` (409، پیام هم‌زمان در یک گفتگو)، `not_retryable` (409، retry روی پیام غیرمجاز)، خانوادهٔ `upstream_*` مسیر passthrough (جدول §۵.۲).
 
 ---
 
@@ -753,12 +858,15 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | `/admin/policies` | سیاست‌ها | admin | تنظیم مدل‌های مجاز و سهمیهٔ هر کاربر |
 | `/admin/usage` | مصرف کل | admin | رتبه‌بندی کاربران، تفکیک مدل، روند، دکمهٔ CSV |
 | `/admin/models` | مدل‌ها و وزن‌ها | admin | ویرایش input/output/cache وزن هر مدل |
-| `/admin/settings` | اتصال آپ‌استریم | admin | وضعیت اتصال (mode/انقضا/base_url)، ورود توکن apikey، سوییچ mode، راهنمای «claude login روی سرور» |
+| `/admin/settings` | اتصال آپ‌استریم | admin | **کارت وضعیت توکن (اصلاحیهٔ ۲):** «توکن معتبر تا …»، «refresh token معتبر تا … / نامشخص»، آخرین refresh (زمان/نتیجه/خطا)، وضعیت auto_refresh؛ CTA فارسی «claude login روی سرور» **فقط** وقتی `degraded`/`failed` (§۴.۱)؛ + ورود توکن apikey، سوییچ mode |
 | `/admin/audit` | لاگ رخدادها | admin | جدول فیلترپذیر audit_log |
 
 **اجزای کلیدی چت:**
 - **model picker** فیلترشده به مدل‌های مجاز کاربر (از `/api/auth/me`).
-- **رندر استریم:** خواندن SSE (پروتکل ۵.۳: `start`/`delta`/`tool`/`done`/`error`) با `fetch` + `ReadableStream`؛ نمایش تدریجی؛ رویداد `tool` به‌صورت chip «در حال ساخت/ویرایش فایل…»؛ markdown با `react-markdown`؛ code block با highlight و دکمهٔ کپی.
+- **چرخهٔ ارسال/استریم (اصلاحیهٔ ۲):** ارسال = `POST messages` → 202 → بلافاصله باز کردن `GET /stream` و رندر رویدادها. **باز کردن هر گفتگو:** ابتدا `GET /api/conversations/{id}`؛ اگر `generating:true` (یا آخرین پیام `status='streaming'`) → اتصال خودکار به `/stream` و رندر replay از ابتدای نوبت — از دید کاربر انگار هیچ‌وقت قطع نشده. رویداد `idle` → اتصال بسته، حالت عادی. `done` → refresh فایل‌ها/مصرف (مثل قبل) + invalidate لیست گفتگوها (خاموش‌شدن اسپینر).
+- **اسپینر سایدبار:** آیتم‌هایی که `generating:true` دارند اسپینر کوچک می‌گیرند؛ لیست با polling سبک TanStack Query (هر ۱۰s وقتی حداقل یک generating هست) یا invalidate بعد از `done`.
+- **حباب شکست‌خورده + تلاش مجدد (Issue C):** پیام assistant با `status='failed'` به‌صورت حباب خطا رندر می‌شود: `error_reason` فارسی + دکمهٔ **«تلاش مجدد»** (فقط وقتی آخرین پیام گفتگوست). کلیک → `POST .../retry` → 202 → همان حباب به حالت استریم برمی‌گردد و `/stream` باز می‌شود. حالت `aborted_restart` («سرویس هنگام تولید پاسخ راه‌اندازی مجدد شد») همین مسیر را دارد.
+- **رندر استریم:** خواندن SSE (پروتکل ۵.۳: `start`/`delta`/`tool`/`done`/`error`/`idle`) با `fetch` + `ReadableStream`؛ نمایش تدریجی؛ رویداد `tool` به‌صورت chip «در حال ساخت/ویرایش فایل…»؛ markdown با `react-markdown`؛ code block با highlight و دکمهٔ کپی.
 - **پنل «فایل‌های من» (جدید، مینیمال):** drawer/tab کنار چت؛ `GET /api/workspace/files` → لیست (نام، حجم، تاریخ) + دکمهٔ دانلود؛ refresh خودکار بعد از رویداد `done` که `files_changed` دارد. حذف: فاز بعد (endpoint هست، UI اختیاری).
 - **آپلود فایل:** drag/drop یا دکمه → `POST attachments` → نمایش chip؛ انواع متن/کد/PDF/تصویر.
 - **سایدبار:** لیست گفتگوها، جستجو، تغییر عنوان (inline)، حذف؛ isolation کامل.
@@ -823,7 +931,25 @@ repo/
 - [ ] رسیدن به سقف سهمیه → 429 با پیام فارسی + ردیف `request.denied_quota` در audit (هر دو سطح).
 - [ ] مدل غیرمجاز → 403؛ پیام هم‌زمان در یک گفتگو → 409 `chat_busy`.
 - [ ] سوییچ `UPSTREAM_MODE=cli_creds` (با اعتبارنامهٔ واقعی هاست) → چت وب و passthrough علیه سرویس واقعی.
+- [ ] **(اصلاحیهٔ ۲)** بستن تب وسط تولید → پیام کامل persist شد؛ باز کردن دوباره → replay از ابتدای نوبت + ادامهٔ زنده؛ اسپینر سایدبار روشن/خاموش درست.
+- [ ] **(اصلاحیهٔ ۲)** restart backend وسط نوبت → پیام `failed/aborted_restart` با دلیل فارسی؛ دکمهٔ «تلاش مجدد» ظاهر و کار می‌کند (202 → استریم تازه، بدون ردیف اضافه، بدون شارژ نوبت شکست‌خورده).
+- [ ] **(اصلاحیهٔ ۲)** retry روی پیام غیرآخر/غیرfailed → 409 `not_retryable`؛ retry هم‌زمان دوم → 409.
+- [ ] **(اصلاحیهٔ ۲)** انقضای مصنوعی access token (دستکاری expiresAt در mock) → auto-refresh اجرا، توکن چرخیده در volume + settings؛ کارت ادمین «آخرین refresh: موفق». خراب کردن refresh token → auto_refresh=failed + CTA فارسی.
+- [ ] **(اصلاحیهٔ ۲)** `claude login` جدید روی هاست (تغییر فایل seed) → ظرف ≤۶۰s adopt؛ فایل هاست دست‌نخورده → هرگز توکن backend-managed را clobber نمی‌کند.
 - [ ] `openapi.json` نسخهٔ فرانت با backend یکی است (CI diff).
+
+### تقسیم کار اصلاحیهٔ ۲ (Issues A+B+C)
+
+**Dev1 — backend (به این ترتیب):**
+1. **A:** ستون‌های `messages.status/error_code/error_reason` + migration + مارک `failed/aborted_restart` در استارتاپ؛ `TurnRegistry` + ring buffer + جداسازی نوبت به `asyncio.create_task`؛ تبدیل `POST messages` به 202؛ endpoint جدید `GET /stream` (replay+live+idle)؛ فلگ `generating` در دو endpoint گفتگو.
+2. **C:** endpoint `POST .../messages/{id}/retry` با گاردها و reset-in-place (§۵.۱)؛ پرکردن error_code/error_reason در همهٔ مسیرهای شکست (cli_error/timeout/quota/upstream_rate_limited).
+3. **B:** ارتقای `app/upstream/credentials.py` به TokenManager: seed-بر-تغییر (hash)، refresh خودکار single-flight علیه `UPSTREAM_OAUTH_TOKEN_URL`، persist دوگانه (volume + settings رمزشده)، بازیابی استارتاپ، حالت‌های `active/degraded/failed`، فیلدهای جدید status؛ env جدید در `.env.example`.
+4. regenerate `docs/openapi.json` و اطلاع به Dev2.
+
+**Dev2 — frontend:**
+1. **A:** بازنویسی چرخهٔ ارسال (202 + همیشه `GET /stream`)، reattach خودکار هنگام باز کردن گفتگوی `generating`، رندر رویداد `idle`، اسپینر سایدبار + invalidate بعد از `done`.
+2. **C:** حباب `failed` با `error_reason` فارسی + دکمهٔ «تلاش مجدد» (فقط آخرین نوبت) + برگشت حباب به حالت استریم پس از 202.
+3. **B:** کارت وضعیت توکن در `/admin/settings` (چهار فیلد + CTA شرطی).
 
 ---
 
@@ -913,4 +1039,4 @@ credits(request) =
 
 ---
 
-*پایان سند فنی v1.1 (اصلاحیهٔ ۱) — آماده برای شروع پیاده‌سازی توسط دو توسعه‌دهنده.*
+*پایان سند فنی v1.2 (اصلاحیهٔ ۲) — آماده برای پیاده‌سازی توسط دو توسعه‌دهنده.*

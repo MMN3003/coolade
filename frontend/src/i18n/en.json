@@ -3,6 +3,10 @@
     "name": "EcoCode Gateway",
     "loading": "Loading…"
   },
+  "help": {
+    "title": "Usage Guide",
+    "subtitle": "How to use EcoCode from coding tools and your own code"
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",
@@ -48,6 +52,7 @@
     "chat": "Chat",
     "usage": "My Usage",
     "keys": "API Keys",
+    "help": "Guide",
     "admin": "Admin",
     "adminUsers": "Users",
     "adminPolicies": "Policies & Quota",

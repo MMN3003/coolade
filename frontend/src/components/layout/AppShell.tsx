@@ -19,6 +19,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
 import BarChartIcon from '@mui/icons-material/BarChartOutlined';
 import KeyIcon from '@mui/icons-material/VpnKeyOutlined';
+import HelpIcon from '@mui/icons-material/HelpOutlineOutlined';
 import PeopleIcon from '@mui/icons-material/PeopleAltOutlined';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AssessmentIcon from '@mui/icons-material/AssessmentOutlined';
@@ -52,6 +53,7 @@ export default function AppShell() {
     { label: t('nav.chat'), icon: <ChatIcon />, path: '/chat' },
     { label: t('nav.usage'), icon: <BarChartIcon />, path: '/usage' },
     { label: t('nav.keys'), icon: <KeyIcon />, path: '/keys' },
+    { label: t('nav.help'), icon: <HelpIcon />, path: '/help' },
   ];
 
   const adminItems: NavItem[] = [

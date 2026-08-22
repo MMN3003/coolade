@@ -14,6 +14,7 @@ import LoginPage from '@/pages/LoginPage';
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
 const UsagePage = lazy(() => import('@/pages/UsagePage'));
 const KeysPage = lazy(() => import('@/pages/KeysPage'));
+const HelpPage = lazy(() => import('@/pages/HelpPage'));
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'));
 const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'));
 const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
@@ -56,6 +57,7 @@ export default function App() {
             <Route path="/chat/:conversationId" element={<ChatPage />} />
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/keys" element={<KeysPage />} />
+            <Route path="/help" element={<HelpPage />} />
 
             <Route element={<RequireAdmin />}>
               <Route path="/admin/users" element={<AdminUsersPage />} />
