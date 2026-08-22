@@ -3,11 +3,17 @@
 | | |
 |---|---|
 | **نام محصول** | EcoCode Gateway |
-| **نسخه سند** | 1.3 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۳؛ E/F/G فقط طراحی) |
+| **نسخه سند** | 1.4 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۴؛ H/I فقط طراحی) |
 | **تاریخ** | 2026-08-22 |
 | **مدیر فنی** | Opus (Tech Lead) |
 | **مبنا** | `docs/PRD.md` v0.2 (§1 توضیح آپ‌استریم، F1.0، F4.6، R1 منتفی) |
 | **مخاطب** | دو توسعه‌دهندهٔ Sonnet (Dev1: infra+backend، Dev2: frontend) |
+
+> **اصلاحیهٔ ۴ (2026-08-22، دو درخواست کاربر — فقط طراحی):**
+> ⚠️ **اصلاحیه‌های ۱–۳ پیاده و merge شده‌اند (HEAD 45d9e14).** اصلاحیهٔ ۴ روی اسکیمای v1.3 سوار می‌شود: **revision متوالی Alembic `0004`، down_revision=`0003`**؛ همهٔ تغییرات جدول‌های جدید یا `ADD COLUMN` nullable هستند. بخش‌های این اصلاحیه با تگ «اصلاحیهٔ ۴» مشخص شده‌اند.
+> ۱) **Issue H — تیم‌ها/عضویت گروهی:** تیم به‌عنوان شیء درجه‌یک؛ عضویت **چند‌به‌چند** (`teams` + `team_members` با unique `(team_id,user_id)`). CRUD ادمین زیر `/api/admin/teams`؛ تیم‌های کاربر در `/api/auth/me` و نمای فقط‌خواندنی «تیم‌های من». per-user quota/policy دست‌نخورده می‌ماند؛ سیاست/سهمیهٔ تیمی فقط نقطهٔ توسعهٔ آینده است (ساخته نمی‌شود).
+> ۲) **Issue I — حافظهٔ مشترک تیم (HR: «کاربران تیم منابع انسانی به حافظه‌های مشترک دسترسی داشته باشند»):** هر تیم یک دایرکتوری مشترک `/data/teams/<team_id>/memory` دارد که در چت هر عضو به‌صورت زیرپوشهٔ `./teams/<slug>/` داخل cwd سشن **در دسترس** می‌شود (رویکرد file-visibility؛ خواندن/نوشتن با همان ابزارهای Read/Write سندباکس). realpath-containment گسترش می‌یابد به **اجتماع** workspace خود کاربر ∪ دایرکتوری تیم‌هایی که عضوشان است. پنل «حافظهٔ مشترک تیم» مثل «فایل‌های من» ولی scoped به تیم انتخابی؛ endpointها زیر `/api/teams/{id}/memory/files` با enforcement عضویت. last-writer-wins (سشن‌ها کوتاه‌عمر per-message).
+> ۳) تقسیم کار اصلاحیهٔ ۴ در انتهای §۱۰.
 
 > **اصلاحیهٔ ۳ (2026-08-22، سه درخواست کاربر — فقط طراحی):**
 > ⚠️ **این اصلاحیه هنوز پیاده نمی‌شود.** Dev1/Dev2 وسط پیاده‌سازی اصلاحیهٔ ۲ (A/B/C/D) هستند. migration و کدِ اصلاحیهٔ ۳ باید **روی** اسکیمای اصلاحیهٔ ۲ سوار شود (revision متوالی Alembic، بعد از merge و integration اصلاحیهٔ ۲). بخش‌های این اصلاحیه با تگ «اصلاحیهٔ ۳» مشخص شده‌اند.
@@ -123,6 +129,7 @@
 backend:
   volumes:
     - users_data:/data/users                          # workspace کاربران (named volume)
+    - teams_data:/data/teams                          # اصلاحیهٔ ۴: حافظهٔ مشترک تیم‌ها
     - attachments_data:/data/attachments
     - claude_state:/home/app/.claude                  # state سشن‌های CLI + اعتبارنامهٔ backend-managed
     - ${CLAUDE_CREDS_DIR:-./data/claude-creds}:/host_claude:ro  # اعتبارنامهٔ Claude Code هاست (seed، فقط‌خواندنی)
@@ -228,6 +235,32 @@ CREATE TABLE users (
 CREATE INDEX idx_users_active ON users(is_active);
 -- workspace کاربر جدول ندارد: قرارداد فایل‌سیستمی /data/users/<user_id>/workspace
 -- (ساخت در اولین استفاده، مالکیت app user، پرمیشن 0700).
+--
+-- اصلاحیهٔ ۴: چیدمان دیسک تیم‌ها (بدون جدول برای خودِ دایرکتوری):
+--   /data/teams/<team_id>/memory/         حافظهٔ مشترک تیم (0770، مالکیت app user)
+--   داخل cwd سشن هر عضو، به‌صورت symlink دیده می‌شود: <cwd>/teams/<slug> -> /data/teams/<team_id>/memory
+--   منبع حقیقت عضویت = جدول team_members؛ دیسک فقط storage است.
+
+-- ============ teams (اصلاحیهٔ ۴ / Issue H) ============
+CREATE TABLE teams (
+    id          BIGSERIAL PRIMARY KEY,
+    name        VARCHAR(150) NOT NULL,
+    slug        VARCHAR(80)  NOT NULL UNIQUE,   -- [a-z0-9-]؛ نام پوشهٔ ./teams/<slug>/ در cwd
+    description TEXT,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- عضویت چند‌به‌چند. role_in_team فعلاً فقط برای نمایش/توسعهٔ آینده؛ enforcement
+-- دسترسی صرفاً بر «عضو بودن» است، نه نقش داخل تیم (ساده و کافی برای فاز فعلی).
+CREATE TYPE team_role AS ENUM ('member', 'lead');
+CREATE TABLE team_members (
+    team_id     BIGINT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_in_team team_role NOT NULL DEFAULT 'member',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (team_id, user_id)             -- unique (team_id,user_id)
+);
+CREATE INDEX idx_team_members_user ON team_members(user_id);   -- «تیم‌های کاربر X» (hot path runner)
 
 -- ============ api_keys ============
 -- کلید شخصی کاربر. متن خام هرگز ذخیره نمی‌شود؛ فقط hash + prefix نمایشی.
@@ -579,6 +612,7 @@ Browser ──(session cookie)──▶ POST /api/conversations/{id}/messages   
                    --model <upstream_model> [--resume <cli_session_id>]
             env شامل MAX_THINKING_TOKENS بر اساس سطح تفکر مؤثر (Issue D، §۵.۷).
             cwd = workspace کاربر (ساخت 0700 در اولین بار؛ attachmentها قبلاً کپی شده‌اند).
+            (اصلاحیهٔ ۴) پیش از spawn، symlinkهای تیم عضو در <cwd>/teams/<slug> هم‌گام می‌شوند (§۵.۴).
  [۸ BUFFER] هر رویداد ترجمه‌شده (نگاشت ۵.۳) به ring buffer نوبت append و
             cond.notify_all() → همهٔ streamهای متصل، live دنبال می‌کنند.
  [۹ FINALIZE] رویداد result → usage → credits → INSERT usage_ledger
@@ -676,11 +710,13 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 | **مدل اجرا** | یک subprocess به ازای هر پیام کاربر (`asyncio.create_subprocess_exec`). بدون پروسهٔ مقیم. |
 | **فرمان** | `claude -p <prompt> --output-format stream-json --verbose --model <upstream_model> [--resume <sid>]` |
 | **cwd** | `/data/users/<user_id>/workspace` — قبل از spawn ساخته/بررسی می‌شود؛ realpath باید زیر `/data/users/<user_id>/` باشد. |
+| **دایرکتوری تیم‌ها** (اصلاحیهٔ ۴) | پیش از spawn، `sync_team_links(user_id)`: زیرپوشهٔ `<cwd>/teams/` ساخته می‌شود و به ازای **هر تیم عضو**، symlink `<cwd>/teams/<slug> -> /data/teams/<team_id>/memory`؛ symlinkهای تیم‌هایی که کاربر دیگر عضوشان نیست حذف می‌شوند (عضویت که تغییر کند، دسترسی نوبتِ بعد اصلاح می‌شود). دایرکتوری تیم با 0770 در اولین نیاز ساخته می‌شود. اگر کاربر عضو هیچ تیمی نبود، `teams/` خالی/غایب است. |
 | **هم‌زمانی** | semaphore سراسری = `CLI_MAX_CONCURRENCY` (پیش‌فرض ۴) + قفل به ازای هر گفتگو = ۱ (پیام دوم در همان گفتگو تا پایان قبلی 409 «پاسخ قبلی در جریان است»). |
 | **timeout** | `CLI_TIMEOUT_SECONDS` (پیش‌فرض ۳۰۰s): ابتدا SIGTERM، بعد از ۱۰s SIGKILL؛ SSE با `event: error` بسته می‌شود؛ اگر تا آن لحظه رویداد usage نیامده، مصرفی ثبت نمی‌شود. |
 | **env پاس‌شده** | فقط لیست سفید: `HOME=/home/app` (که `.claude/.credentials.json` sync‌شده آنجاست)، `ANTHROPIC_BASE_URL=$UPSTREAM_BASE_URL`، در mode apikey: `ANTHROPIC_AUTH_TOKEN=<توکن>`، `HTTP(S)_PROXY/NO_PROXY`، `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. هیچ env دیگر backend (secrets, DB URL) به CLI نمی‌رسد. |
 | **انتخاب مدل** | `models.upstream_model` گفتگو → `--model`. ACL قبل از spawn چک شده. |
-| **پرمیشن ابزارها** | **بدون `--dangerously-skip-permissions`.** به‌جای آن allowlist صریح: `--allowedTools "Read(./**),Write(./**),Edit(./**),Glob,Grep"` و `--disallowedTools "Bash,WebFetch,WebSearch"`. **توجیه:** (الف) headless هرگز روی prompt پرمیشن بلاک نمی‌شود چون هر چیزِ مجاز auto-approve است و باقی رد می‌شود؛ (ب) `Bash` عملاً فرار از confinement پوشه است (می‌تواند workspace کاربر دیگر را بخواند) پس در فاز ۱ ممنوع؛ (ج) `WebFetch/WebSearch` بسته تا داده از سازمان بیرون نرود و مصرف قابل پیش‌بینی بماند. الگوهای `./**` دسترسی فایل را به workspace محدود می‌کنند. فاز ۲ در صورت نیازِ سناریوهای کدنویسی، `Bash` را با sandbox سطح‌OS (bubblewrap) اضافه می‌کند — نه زودتر. |
+| **پرمیشن ابزارها** | **بدون `--dangerously-skip-permissions`.** به‌جای آن allowlist صریح: `--allowedTools "Read(./**),Write(./**),Edit(./**),Glob,Grep"` و `--disallowedTools "Bash,WebFetch,WebSearch"`. **توجیه:** (الف) headless هرگز روی prompt پرمیشن بلاک نمی‌شود چون هر چیزِ مجاز auto-approve است و باقی رد می‌شود؛ (ب) `Bash` عملاً فرار از confinement پوشه است (می‌تواند workspace کاربر دیگر را بخواند) پس در فاز ۱ ممنوع؛ (ج) `WebFetch/WebSearch` بسته تا داده از سازمان بیرون نرود و مصرف قابل پیش‌بینی بماند. الگوهای `./**` دسترسی فایل را به cwd محدود می‌کنند — و چون دایرکتوری تیم به‌صورت symlink **زیر** cwd (در `./teams/<slug>/`) قرار دارد، همین الگو خواندن/نوشتن حافظهٔ تیم را طبیعتاً پوشش می‌دهد بدون افزودن مسیر مطلق (اصلاحیهٔ ۴). فاز ۲ در صورت نیازِ سناریوهای کدنویسی، `Bash` را با sandbox سطح‌OS (bubblewrap) اضافه می‌کند — نه زودتر. |
+| **مجموعهٔ containment** (اصلاحیهٔ ۴) | مسیرهای مجاز = **اجتماع** `realpath(/data/users/<user_id>/workspace)` ∪ `{ realpath(/data/teams/<tid>/memory) : tid ∈ تیم‌های عضو کاربر }`. هر resolve فایل (workspace و team-memory) با این مجموعه چک می‌شود؛ خارج از آن → رد. عضویت از `team_members` خوانده می‌شود (منبع حقیقت)، نه از وجود symlink روی دیسک. |
 | **usage** | از رویداد `result` (فیلد `usage`) → فرمول ضمیمهٔ الف. `total_cost_usd` نادیده گرفته می‌شود (واحد ما credit است). |
 | **قطع مرورگر** | هیچ اثری ندارد — نوبت در task پس‌زمینه است (§۵.۱)؛ client با `GET /stream` هر لحظه reattach می‌کند. |
 | **پایداری سشن + fallback resume** (پیاده‌شده) | state سشن‌های CLI روی volume `claude_state` ماندگار است. اگر با وجود آن، CLI شناسهٔ ذخیره‌شده را نشناسد (خطای «No conversation found with session ID» — مثلا state پیش از volume-backed شدن گم شده)، runner **یک‌بار** بدون `--resume` دوباره اجرا می‌کند: رویداد `start` تلاش اول بی‌صدا دور ریخته می‌شود، کاربر یک استریم عادی روی سشن تازه می‌بیند (از دست رفتن context پذیرفته و log می‌شود) و session id جدید persist می‌گردد. |
@@ -742,6 +778,27 @@ reset_5h_at = oldest + window     # زمانی که با aging out آن ردیف
 این «آزادی جزئی» است (اولین کاهش)، نه آزادی کامل — که برای پیام «تا حدود این ساعت صبر کنید» کافی و صادقانه است. در پاسخ 429 و در بدنهٔ خطا برمی‌گردد تا UI (و retry اصلاحیهٔ ۲/Issue C) دلیل و زمان درست را نشان دهد.
 
 **تمایز کدها:** `error_code` روی پیام شکست‌خورده (Issue C) و در بدنهٔ 429: `quota_exceeded` (هفتگی) در برابر `quota_exceeded_5h` (۵ساعته). retry فقط زمانی منطقی است که پنجره آزاد شده باشد؛ UI دکمهٔ «تلاش مجدد» را تا `reset_5h_at` غیرفعال/با تولتیپ نشان می‌دهد.
+
+### ۵.۹ حافظهٔ مشترک تیم در سشن چت (اصلاحیهٔ ۴ / Issue I — طراحی)
+
+درخواست عینی: اعضای تیم HR به مجموعه‌ای از حافظه‌های مشترک دسترسی داشته باشند. چون چت وب یک subprocess کوتاه‌عمرِ Claude Code با `cwd = workspace کاربر` است، سؤال اصلی «چطور دایرکتوری تیم را به آن سشن برسانیم».
+
+**دو رویکرد ارزیابی‌شده:**
+
+| رویکرد | چطور | مزیت | عیب |
+|---|---|---|---|
+| **file-visibility** | دایرکتوری تیم به‌صورت زیرپوشه در cwd دیده شود؛ دستیار با همان ابزارهای Read/Write/Edit/Glob/Grep داخل سندباکس آن را می‌خواند/می‌نویسد | طبیعی با معماری فعلی؛ هیچ ابزار/مسیر جدیدی به CLI اضافه نمی‌شود؛ خواندن **و** نوشتن هر دو کار می‌کنند؛ حجم زیاد بدون هزینهٔ توکن ثابت | دستیار باید «بداند» به `./teams/<slug>/` سر بزند (با یک اشارهٔ کوتاه در context حل می‌شود) |
+| **context-injection** | محتوای حافظهٔ تیم هر نوبت به‌صورت system/context جلوی پیام تزریق شود | دستیار همیشه حافظه را «می‌بیند» بدون کاوش | هر نوبت هزینهٔ توکن؛ نوشتن ممکن نیست (فقط خواندن)؛ حجم بزرگ context را می‌ترکاند؛ نیاز به منطق تزریق جدید در runner |
+
+**تصمیم (هیبرید، متمایل به file-visibility):**
+1. **پایه = file-visibility:** دایرکتوری تیم به‌صورت **symlink** در `<cwd>/teams/<slug>/` (سیاست §۵.۴)، **خواندن‌ونوشتن برای اعضا**. این مکانیزم اصلی است — چون هم read و هم write را با سندباکس موجود پوشش می‌دهد و با اصل «یک مسیر، بدون ابزار جدید» سازگار است.
+2. **اشارهٔ سبک (بخش هیبرید):** runner یک فایل کوچک `<cwd>/teams/README.md` تولیدشده می‌گذارد (فهرست تیم‌های عضو + یک خط راهنما: «حافظه‌های مشترک هر تیم در پوشهٔ هم‌نامش اینجاست؛ پیش از پاسخ به سؤالات مرتبط با تیم، این پوشه را بخوان»). این جای تزریقِ کل محتوا را می‌گیرد: چند ده توکن ثابت به‌جای کل حافظه، و دستیار خودش با Read سراغ فایل‌های مرتبط می‌رود. **کل محتوای حافظه تزریق نمی‌شود.**
+
+این هیبرید عملاً هزینهٔ context-injection را ندارد ولی کشف‌پذیری‌اش را دارد.
+
+**هم‌زمانی/consistency:** دایرکتوری تیم یک پوشهٔ فایل‌سیستمیِ مشترک است و سشن‌ها **کوتاه‌عمر و per-message**اند. معناشناسی صراحتاً **last-writer-wins** در سطح فایل است (بدون قفل توزیع‌شده). چون نوشتن‌ها معمولاً افزودن/به‌روزکردن فایل‌های جدا هستند و نه ویرایش هم‌زمان یک فایل، برخورد نادر است؛ هیچ تضمین تراکنشی روی دایرکتوری تیم داده نمی‌شود و این در UI («حافظهٔ مشترک؛ آخرین نوشته برنده است») مستند می‌شود. write ابزار CLI اتمیک-per-file است (فایل کامل نوشته می‌شود) پس فایل نیمه‌نوشته دیده نمی‌شود.
+
+**مرزهای امنیت (تکرار §۱۱):** symlink فقط برای تیم‌هایی ساخته می‌شود که کاربر در `team_members` عضوشان است؛ resolve هر دسترسی به مجموعهٔ containment (workspace ∪ تیم‌های عضو) چک می‌شود؛ کاربر هرگز به تیمی که عضوش نیست نمی‌رسد. تغییر عضویت در نوبت بعد اعمال می‌شود (symlink کهنه حذف می‌شود).
 
 ---
 
@@ -873,7 +930,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 |---|---|---|---|
 | POST | `/api/auth/login` | عمومی | لاگین (username, password) → set cookie |
 | POST | `/api/auth/logout` | user | حذف session |
-| GET | `/api/auth/me` | user | اطلاعات کاربر جاری + role + مدل‌های مجاز + خلاصهٔ سهمیه + **`max_thinking_level` مؤثر** (Issue D؛ برای محدودکردن picker) |
+| GET | `/api/auth/me` | user | اطلاعات کاربر جاری + role + مدل‌های مجاز + خلاصهٔ سهمیه + **`max_thinking_level` مؤثر** (Issue D) + **(اصلاحیهٔ ۴)** `teams: [{id, name, slug, role_in_team}]` |
 
 ### چت و تاریخچه (کاربر)
 | متد | مسیر | هدف |
@@ -897,6 +954,18 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | DELETE | `/api/workspace/files/{file_id}` | حذف فایل (اختیاری در UI؛ endpoint موجود) + audit `workspace.file_delete` |
 
 **قرارداد `file_id`:** شناسهٔ opaque = base64url(مسیر نسبی داخل workspace). سرور هنگام resolve: decode → join با root workspace کاربرِ session → `realpath` → **الزام** به قرارگیری زیر همان root (رد traversal و symlink-escape با 404). نام فایل یا user id هرگز در URL نیست؛ هویت همیشه از session.
+
+### تیم‌ها و حافظهٔ مشترک (کاربر) — اصلاحیهٔ ۴ / Issue H+I
+| متد | مسیر | هدف |
+|---|---|---|
+| GET | `/api/teams/mine` | تیم‌های کاربر جاری `[{id, name, slug, role_in_team, member_count}]` (نمای «تیم‌های من») |
+| GET | `/api/teams/{id}/members` | اعضای تیم (فقط اگر خود کاربر عضو باشد؛ متادیتا: username/display_name/role_in_team) |
+| GET | `/api/teams/{id}/memory/files` | لیست فایل‌های حافظهٔ مشترک تیم — **فقط اگر عضو**؛ همان شکل workspace files |
+| POST | `/api/teams/{id}/memory/files` | آپلود فایل به حافظهٔ تیم (multipart) — فقط عضو |
+| GET | `/api/teams/{id}/memory/files/{file_id}` | دانلود — فقط عضو |
+| DELETE | `/api/teams/{id}/memory/files/{file_id}` | حذف — فقط عضو + audit `team.memory.file_delete` |
+
+**enforcement عضویت (قطعی):** هر endpoint تیمی ابتدا چک می‌کند `(team_id, current_user.id) ∈ team_members` (یا `role=admin`)؛ در غیر این صورت **404** (نه 403 — تا وجود/عدم‌وجود تیم برای غیرعضو فاش نشود). `file_id` همان قرارداد opaque base64url؛ resolve با root = `realpath(/data/teams/<team_id>/memory)` و الزام containment زیر همان root. ادمین می‌تواند حافظهٔ هر تیم را مدیریت کند (بدون نیاز به عضویت).
 
 ### کلید API شخصی (کاربر)
 | متد | مسیر | هدف |
@@ -925,6 +994,18 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | GET | `/api/admin/users/{id}` | جزئیات + policy + quota |
 | PATCH | `/api/admin/users/{id}` | ویرایش (نقش، فعال/غیرفعال، رمز محلی) |
 | DELETE | `/api/admin/users/{id}` | حذف کاربر (+ابطال کلیدها؛ workspace روی دیسک می‌ماند تا پاک‌سازی دستی) |
+
+### ادمین — تیم‌ها (اصلاحیهٔ ۴ / Issue H)
+| متد | مسیر | هدف |
+|---|---|---|
+| GET | `/api/admin/teams` | لیست تیم‌ها + شمار اعضا |
+| POST | `/api/admin/teams` | ساخت تیم (`{name, slug?, description?}`؛ slug اگر نبود از name تولید و یکتاسازی می‌شود) |
+| GET | `/api/admin/teams/{id}` | جزئیات + اعضا |
+| PATCH | `/api/admin/teams/{id}` | تغییر نام/description (slug پس از ساخت ثابت است — چون نام پوشهٔ symlink؛ تغییرش migration دیسک می‌خواهد) |
+| DELETE | `/api/admin/teams/{id}` | حذف تیم (رکوردها CASCADE؛ دایرکتوری `/data/teams/<id>` روی دیسک می‌ماند تا پاک‌سازی دستی — مثل workspace) |
+| POST | `/api/admin/teams/{id}/members` | افزودن عضو (`{user_id, role_in_team?}`) |
+| DELETE | `/api/admin/teams/{id}/members/{user_id}` | حذف عضو |
+| GET/POST/DELETE | `/api/admin/teams/{id}/memory/files[...]` | مدیریت حافظهٔ هر تیم توسط ادمین (همان قرارداد endpointهای کاربر، بدون نیاز به عضویت) |
 
 ### ادمین — سیاست و سهمیه
 | متد | مسیر | هدف |
@@ -977,7 +1058,10 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | `/chat/:id` | گفتگوی خاص | user | همان، گفتگوی انتخابی |
 | `/usage` | مصرف من | user | نوار پیشرفت سهمیهٔ هفتگی، تفکیک مدل/کلید، نمودار روند روزانه، هشدار ۸۰٪ + **(اصلاحیهٔ ۳)** نوار جداگانهٔ «۵ ساعتهٔ اخیر» (used_5h/limit + «آزاد می‌شود حدود …») در کنار نوار هفتگی |
 | `/keys` | کلیدهای API من | user | لیست + ساخت (نمایش یک‌بارهٔ کلید در modal با دکمهٔ کپی) + ابطال |
+| `/teams` | تیم‌های من | user | **(اصلاحیهٔ ۴ / Issue H)** لیست فقط‌خواندنی تیم‌های عضو (نام، اعضا) + ورود به «حافظهٔ مشترک تیم» هر کدام |
+| `/teams/:id/memory` | حافظهٔ مشترک تیم | user (عضو) | **(اصلاحیهٔ ۴ / Issue I)** پنل مثل «فایل‌های من» ولی scoped به تیم: لیست/آپلود/دانلود/حذف فایل‌های `/api/teams/{id}/memory/files`؛ برچسب «حافظهٔ مشترک — آخرین نوشته برنده است» |
 | `/admin/users` | مدیریت کاربران | admin | جدول، ساخت/ویرایش/غیرفعال، لینک به policy/quota |
+| `/admin/teams` | مدیریت تیم‌ها | admin | **(اصلاحیهٔ ۴ / Issue H)** CRUD تیم، افزودن/حذف عضو (chip/autocomplete کاربر)، ورود به حافظهٔ هر تیم |
 | `/admin/policies` | سیاست‌ها | admin | تنظیم مدل‌های مجاز و سهمیهٔ هر کاربر + **(اصلاحیهٔ ۳)** فیلد «سقف ۵ ساعته» |
 | `/admin/usage` | مصرف کل | admin | رتبه‌بندی کاربران (هر ردیف لینک به گزارش کاربر)، تفکیک مدل، روند، دکمهٔ CSV + **(اصلاحیهٔ ۳)** کارت «لیمیت اکانت اصلی» (مصرف/باقی‌مانده/reset هر پنجره + `last_updated`؛ در نبود داده: فقط tier/subscription و پیام صریح) |
 | `/admin/users/:id/usage` | گزارش کاربر | admin | **(اصلاحیهٔ ۳ / Issue G)** drill-down: همان نمای «مصرف من» کاربر (روند، by_model، by_key، نوار هفتگی و ۵ساعته) + دکمهٔ CSV تک‌کاربر — فقط متادیتا، هرگز محتوای چت |
@@ -994,6 +1078,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 - **حباب شکست‌خورده + تلاش مجدد (Issue C):** پیام assistant با `status='failed'` به‌صورت حباب خطا رندر می‌شود: `error_reason` فارسی + دکمهٔ **«تلاش مجدد»** (فقط وقتی آخرین پیام گفتگوست). کلیک → `POST .../retry` → 202 → همان حباب به حالت استریم برمی‌گردد و `/stream` باز می‌شود. حالت `aborted_restart` («سرویس هنگام تولید پاسخ راه‌اندازی مجدد شد») همین مسیر را دارد.
 - **رندر استریم:** خواندن SSE (پروتکل ۵.۳: `start`/`delta`/`tool`/`done`/`error`/`idle`) با `fetch` + `ReadableStream`؛ نمایش تدریجی؛ رویداد `tool` به‌صورت chip «در حال ساخت/ویرایش فایل…»؛ markdown با `react-markdown`؛ code block با highlight و دکمهٔ کپی.
 - **پنل «فایل‌های من» (جدید، مینیمال):** drawer/tab کنار چت؛ `GET /api/workspace/files` → لیست (نام، حجم، تاریخ) + دکمهٔ دانلود؛ refresh خودکار بعد از رویداد `done` که `files_changed` دارد. حذف: فاز بعد (endpoint هست، UI اختیاری).
+- **دسترسی حافظهٔ تیم در چت (اصلاحیهٔ ۴):** در حین چت، دستیار حافظهٔ تیم‌های عضو را به‌صورت `./teams/<slug>/` می‌بیند و می‌تواند بخواند/بنویسد (§۵.۹)؛ مدیریت مستقیم فایل‌ها از صفحهٔ `/teams/:id/memory` انجام می‌شود. نیازی به کنترل جدید در خود صفحهٔ چت نیست.
 - **آپلود فایل:** drag/drop یا دکمه → `POST attachments` → نمایش chip؛ انواع متن/کد/PDF/تصویر.
 - **سایدبار:** لیست گفتگوها، جستجو، تغییر عنوان (inline)، حذف؛ isolation کامل.
 - **بنر سهمیه:** وقتی `used/budget >= 0.8` هشدار زرد؛ وقتی رد شد پیام قرمز فارسی. حالت `chat_busy` (409): دکمهٔ ارسال قفل با پیام «پاسخ قبلی در جریان است».
@@ -1096,6 +1181,20 @@ repo/
 2. **F:** کارت «لیمیت اکانت اصلی» در `/admin/usage` (پنجره‌ها + `last_updated` + برچسب stale؛ حالت `available:false`).
 3. **G:** صفحهٔ `/admin/users/:id/usage` (drill-down از لیست کاربران و از ردیف‌های رتبه‌بندی مصرف) + دکمهٔ CSV تک‌کاربر.
 
+### تقسیم کار اصلاحیهٔ ۴ (Issues H+I) — پس از HEAD 45d9e14
+
+> **پیش‌نیاز:** revision متوالی Alembic `0004` (down_revision=`0003`). جدول‌های جدید + volume `teams_data`. H مستقل است و اول می‌رود؛ I روی H سوار می‌شود (نیاز به عضویت). per-user quota/policy دست‌نخورده.
+
+**Dev1 — backend:**
+1. **H:** migration `teams` + `team_members` (+ enum `team_role`) + volume `teams_data:/data/teams`؛ CRUD ادمین `/api/admin/teams` (+ members)؛ تولید/یکتاسازی slug؛ افزودن `teams[]` به `/api/auth/me` و endpoint `/api/teams/mine` + `/api/teams/{id}/members`.
+2. **I — runner:** تابع `member_team_dirs(user_id)` (خواندن `team_members`) و `sync_team_links(user_id, cwd)` که symlinkهای `<cwd>/teams/<slug>` را با عضویت هم‌گام می‌کند + تولید `<cwd>/teams/README.md` (اشارهٔ سبک §۵.۹)؛ فراخوانی پیش از spawn در `cli_runner.py`؛ ساخت `/data/teams/<id>/memory` با 0770.
+3. **I — containment و endpointها:** گسترش منطق `workspace_files.resolve_file_id` به یک resolver عمومی با root پارامتری؛ ماژول جدید team-memory (root = `/data/teams/<id>/memory`) با همان قرارداد opaque؛ endpointهای `/api/teams/{id}/memory/files` (+ نسخهٔ ادمین) با گارد عضویت (404 برای غیرعضو)؛ audit `team.memory.file_delete`.
+4. regenerate `docs/openapi.json` و اطلاع به Dev2.
+
+**Dev2 — frontend:**
+1. **H:** صفحهٔ `/admin/teams` (CRUD + مدیریت اعضا با autocomplete کاربر)؛ صفحهٔ فقط‌خواندنی `/teams` («تیم‌های من») از `/api/teams/mine`؛ نمایش تیم‌ها در نمای پروفایل/هدر از `/me`.
+2. **I:** صفحهٔ `/teams/:id/memory` («حافظهٔ مشترک تیم») — کامپوننت فایل‌منیجرِ همان «فایل‌های من» با baseِ endpoint تیمی + برچسب last-writer-wins؛ ادمین از `/admin/teams` هم به همان کامپوننت (root تیم) دسترسی دارد.
+
 ---
 
 ## ۱۱. امنیت + برنامهٔ تست/تأیید
@@ -1103,7 +1202,8 @@ repo/
 ### ۱۱.۱ نکات امنیتی (الزامی)
 - **اعتبارنامهٔ آپ‌استریم:** mode cli_creds: mount فقط‌خواندنی + کپی فقط داخل HOME کانتینر؛ هرگز در DB/لاگ/مرورگر. mode apikey: **Fernet** (کلید از `ECOCODE_SECRET_KEY` در env) در `settings`. کلید env در secrets سرور، نه در repo.
 - **کلید API کاربر:** فقط `sha256` ذخیره؛ متن کامل یک‌بار نمایش. `.env` و `certs/` در `.gitignore`.
-- **confinement مسیر CLI:** بدون `--dangerously-skip-permissions`؛ allowlist ابزار فقط-فایل با الگوی `./**`؛ `Bash/WebFetch/WebSearch` ممنوع (توجیه در ۵.۴)؛ cwd همیشه realpath-چک‌شده زیر `/data/users/<user_id>/`؛ env پروسه لیست سفید (هیچ secret backend به CLI نمی‌رسد).
+- **confinement مسیر CLI:** بدون `--dangerously-skip-permissions`؛ allowlist ابزار فقط-فایل با الگوی `./**`؛ `Bash/WebFetch/WebSearch` ممنوع (توجیه در ۵.۴)؛ env پروسه لیست سفید (هیچ secret backend به CLI نمی‌رسد). **(اصلاحیهٔ ۴)** مجموعهٔ مجاز = workspace کاربر ∪ دایرکتوری تیم‌های عضو؛ symlink تیم فقط برای عضو ساخته می‌شود و هر resolve فایل realpath-چک‌شده در همین اجتماع است.
+- **مرز دسترسی تیم (اصلاحیهٔ ۴ / Issue I):** عضویت در `team_members` **تنها** مرز دسترسی به حافظهٔ تیم است — هم در سشن CLI (symlink فقط برای عضو) و هم در endpointهای `/api/teams/{id}/memory/*` (گارد عضویت، 404 برای غیرعضو تا وجود تیم فاش نشود). کاربر هرگز به دایرکتوری تیمی که عضوش نیست نمی‌رسد؛ تغییر عضویت در نوبت بعد اعمال می‌شود. `file_id` تیمی opaque و containment زیر `/data/teams/<id>/memory`. ادمین استثناست (مدیریت هر تیم).
 - **workspace isolation:** `file_id` opaque + realpath containment check؛ user id هرگز از URL؛ پرمیشن پوشه‌ها 0700 متعلق به app user.
 - **rate limiting لاگین:** حداکثر ~۵ تلاش ناموفق در ۱۵ دقیقه به ازای username+IP؛ سپس backoff. همهٔ تلاش‌ها در audit.
 - **کنترل منابع CLI:** semaphore هم‌زمانی + timeout + kill group (پروسهٔ فرزند هم بمیرد)؛ سقف حجم workspace هر کاربر (softquota ~1GB، هشدار در UI) در فاز ۱ فقط گزارشی.
@@ -1156,6 +1256,7 @@ curl -k -b cj https://localhost/api/usage/me      # credits افزایش یاف�
 5. ارسال پیام دوم در همان گفتگو → context حفظ شده (resume).
 6. `/usage` → افزایش مصرف و نوار پیشرفت.
 7. isolation: با کاربر دوم لاگین → نه گفتگو و نه فایل کاربر اول دیده می‌شود.
+8. **(اصلاحیهٔ ۴)** ادمین تیم HR می‌سازد و کاربر اول را عضو می‌کند؛ در چت کاربر اول «در پوشهٔ تیم HR یادداشتی بنویس» → فایل در `./teams/hr/` ساخته و در `/teams/:id/memory` دیده می‌شود؛ عضو دوم همان تیم آن را می‌بیند؛ کاربرِ **غیرعضو** با درخواست `/api/teams/{hr}/memory/files` → **404** و در چتش `./teams/hr` وجود ندارد.
 
 **سطح ۴ — تعویض به آپ‌استریم واقعی:** روی سرورِ لاگین‌شده، `UPSTREAM_MODE=cli_creds` و `MOCK_CLI=0` → تکرار سناریوهای سطح ۲/۳ علیه سرویس Claude-سازگار واقعی؛ بررسی `/admin/settings` (وضعیت اتصال و انقضا)؛ در صورت وجود توکن مستقیم، mode `apikey` هم یک‌بار دود-تست شود.
 
@@ -1184,4 +1285,4 @@ credits(request) =
 
 ---
 
-*پایان سند فنی v1.3 — اصلاحیهٔ ۲ (A/B/C/D) در حال پیاده‌سازی؛ اصلاحیهٔ ۳ (E/F/G) طراحی‌شده، اجرا پس از integration اصلاحیهٔ ۲.*
+*پایان سند فنی v1.4 — اصلاحیه‌های ۱–۳ پیاده و merge شده (HEAD 45d9e14)؛ اصلاحیهٔ ۴ (H/I) طراحی‌شده، اجرا روی revision متوالی 0004.*
