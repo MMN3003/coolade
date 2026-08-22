@@ -7,6 +7,7 @@ can bring up and be exercised end-to-end without any real upstream account.
 from __future__ import annotations
 
 import json
+import re
 import time
 import uuid
 from typing import Any
@@ -24,6 +25,33 @@ FAKE_USAGE = {
     "cache_read_input_tokens": 10,
 }
 
+# Magic prompt trigger: a message containing e.g. `mock_error_429` makes this
+# endpoint answer with that HTTP status and an Anthropic-shaped error body, so
+# the whole error-propagation chain (handler → litellm → backend) can be
+# exercised end-to-end in mode mock.
+_ERROR_TRIGGER = re.compile(r"mock_error_(\d{3})")
+_ERROR_TYPES = {
+    401: "authentication_error",
+    403: "permission_error",
+    404: "not_found_error",
+    429: "rate_limit_error",
+    500: "api_error",
+    529: "overloaded_error",
+}
+
+
+def _find_error_trigger(body: dict) -> int | None:
+    for m in body.get("messages", []):
+        content = m.get("content")
+        if isinstance(content, list):
+            text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
+        else:
+            text = str(content or "")
+        match = _ERROR_TRIGGER.search(text)
+        if match:
+            return int(match.group(1))
+    return None
+
 
 @app.get("/health")
 async def health() -> dict:
@@ -40,6 +68,19 @@ async def messages(request: Request) -> Any:
     model = body.get("model", "mock-model")
     stream = bool(body.get("stream", False))
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
+
+    error_status = _find_error_trigger(body)
+    if error_status is not None:
+        return JSONResponse(
+            status_code=error_status,
+            content={
+                "type": "error",
+                "error": {
+                    "type": _ERROR_TYPES.get(error_status, "api_error"),
+                    "message": f"mock-upstream simulated {error_status}",
+                },
+            },
+        )
 
     if not stream:
         return JSONResponse(

@@ -15,6 +15,12 @@ litellm_settings:
       custom_handler: ecocode_upstream_handler.adapter
   drop_params: true
 
+router_settings:
+  # هر گروه مدل فقط یک deployment (رله‌ی ecocode-upstream) دارد؛ cooldown چیزی برای
+  # failover ندارد و فقط بعد از چند خطا، کد واقعی upstream (401/529/…) را با
+  # «no deployments available» (429) می‌پوشاند.
+  disable_cooldowns: true
+
 general_settings:
   master_key: "os.environ/LITELLM_MASTER_KEY"
   database_url: "os.environ/LITELLM_DATABASE_URL"

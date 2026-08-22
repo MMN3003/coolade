@@ -258,7 +258,12 @@ async def send_message(
                         conv_row = await sdb.get(Conversation, conv_id)
                         if conv_row:
                             sid = ev.get("session_id") or session_id_captured
-                            if sid and not conv_row.cli_session_id:
+                            # Persist also when it CHANGED: the runner may have
+                            # rebuilt the session after a stale --resume (CLI
+                            # session state lost) — the new id must replace the
+                            # dead one or every later turn would re-trigger the
+                            # fallback.
+                            if sid and sid != conv_row.cli_session_id:
                                 conv_row.cli_session_id = sid
                             conv_row.updated_at = datetime.datetime.now(datetime.timezone.utc)
                         credits_used = str(entry.credits)

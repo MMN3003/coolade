@@ -10,6 +10,11 @@ volumes:
   attachments_data:
   litellm_data:
   frontend_static:
+  # Claude Code CLI state (sessions/history) inside the backend container's HOME.
+  # Must survive container recreation or --resume breaks for existing conversations;
+  # .credentials.json inside it is (re)written by the backend's host->container sync
+  # at startup and every 60s, so persisting it is safe.
+  claude_state:
 
 services:
   postgres:
@@ -93,6 +98,7 @@ services:
     volumes:
       - users_data:/data/users
       - attachments_data:/data/attachments
+      - claude_state:/home/app/.claude
       - ${CLAUDE_CREDS_DIR:-./data/claude-creds}:/host_claude:ro
     expose:
       - "8000"

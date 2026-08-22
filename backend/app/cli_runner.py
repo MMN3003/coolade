@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from collections.abc import AsyncIterator
@@ -20,7 +21,11 @@ from app.db import async_session_factory
 from app.models import Setting
 from app.security import decrypt_secret
 
+logger = logging.getLogger("ecocode.cli_runner")
+
 settings = get_settings()
+
+_SESSION_NOT_FOUND_MARKER = "No conversation found with session ID"
 
 _semaphore = asyncio.Semaphore(settings.cli_max_concurrency)
 _busy_conversations: set[int] = set()
@@ -135,7 +140,14 @@ def _translate_event(obj: dict[str, Any]) -> list[dict[str, Any]]:
 
     if t == "result":
         if obj.get("is_error"):
-            events.append({"event": "error", "message": "اجرای دستیار با خطا مواجه شد."})
+            events.append(
+                {
+                    "event": "error",
+                    "message": "اجرای دستیار با خطا مواجه شد.",
+                    "subtype": obj.get("subtype"),
+                    "cli_errors": [str(e) for e in obj.get("errors") or []],
+                }
+            )
             return events
         usage = obj.get("usage") or {}
         events.append(
@@ -212,6 +224,12 @@ async def _run_process(
         yield {"event": "error", "message": "اجرای دستیار به‌طور غیرمنتظره متوقف شد."}
 
 
+def _is_session_not_found(ev: dict[str, Any]) -> bool:
+    if ev.get("event") != "error":
+        return False
+    return any(_SESSION_NOT_FOUND_MARKER in e for e in ev.get("cli_errors") or [])
+
+
 async def run_conversation_turn(
     *,
     user_id: int,
@@ -222,10 +240,47 @@ async def run_conversation_turn(
 ) -> AsyncIterator[dict[str, Any]]:
     """Caller is responsible for the per-conversation busy reservation (see
     try_acquire_conversation/release_conversation) — kept out of this generator so the
-    409 chat_busy check happens synchronously before any SSE bytes are sent."""
+    409 chat_busy check happens synchronously before any SSE bytes are sent.
+
+    If the CLI no longer knows the stored session id (its session state was
+    lost, e.g. container recreated before claude_state was volume-backed),
+    the turn is retried ONCE without --resume: the user sees a normal stream
+    on a fresh session (context loss accepted), and the caller persists the
+    new session_id from the start/done events.
+    """
     ws = workspace_dir(user_id)
     env = await _build_env()
-    cmd = _build_command(prompt, upstream_model, resume_session_id)
     async with _semaphore:
-        async for ev in _run_process(cmd, cwd=ws, env=env, timeout=settings.cli_timeout_seconds):
-            yield ev
+        resume = resume_session_id
+        for attempt in (1, 2):
+            cmd = _build_command(prompt, upstream_model, resume)
+            # Hold back leading "start" events until real output arrives, so a
+            # session-not-found first attempt is discarded invisibly and the
+            # retry's own start event is the only one the caller ever sees.
+            pending: list[dict[str, Any]] = []
+            streamed = False
+            retry = False
+            async for ev in _run_process(cmd, cwd=ws, env=env, timeout=settings.cli_timeout_seconds):
+                if not streamed and ev["event"] == "start":
+                    pending.append(ev)
+                    continue
+                if attempt == 1 and resume and not streamed and _is_session_not_found(ev):
+                    retry = True
+                    break
+                for held in pending:
+                    yield held
+                pending.clear()
+                streamed = True
+                yield ev
+            if not retry:
+                for held in pending:
+                    yield held
+                return
+            logger.info(
+                "cli session rebuild: conversation_id=%s user_id=%s stale_session_id=%s "
+                "(session state not found by CLI; retrying without --resume)",
+                conversation_id,
+                user_id,
+                resume,
+            )
+            resume = None

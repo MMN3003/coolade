@@ -92,14 +92,26 @@ def _raise_upstream_http_error(status_code: int, detail: str, model: str) -> Non
     backend's client-facing error mapping."""
     message = f"ecocode upstream returned {status_code}: {detail[:500]}"
     provider = "ecocode-upstream"
+    # Synthetic response: some litellm exception classes require `response` positionally.
+    response = httpx.Response(
+        status_code=status_code, request=httpx.Request("POST", "http://upstream/v1/messages")
+    )
     if status_code == 401:
-        raise litellm.AuthenticationError(message=message, llm_provider=provider, model=model)
+        raise litellm.AuthenticationError(
+            message=message, llm_provider=provider, model=model, response=response
+        )
     if status_code == 403:
-        raise litellm.PermissionDeniedError(message=message, llm_provider=provider, model=model)
+        raise litellm.PermissionDeniedError(
+            message=message, llm_provider=provider, model=model, response=response
+        )
     if status_code == 404:
-        raise litellm.NotFoundError(message=message, llm_provider=provider, model=model)
+        raise litellm.NotFoundError(
+            message=message, llm_provider=provider, model=model, response=response
+        )
     if status_code == 429:
-        raise litellm.RateLimitError(message=message, llm_provider=provider, model=model)
+        raise litellm.RateLimitError(
+            message=message, llm_provider=provider, model=model, response=response
+        )
     # Anything else (including Anthropic's 529 overloaded) keeps its code verbatim.
     raise litellm.APIError(
         status_code=status_code,

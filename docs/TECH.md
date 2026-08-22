@@ -14,7 +14,8 @@
 > ۲) **Issue B — مالکیت چرخهٔ عمر توکن آپ‌استریم (§۴.۱):** پس از seed اولیه از فایل هاست، **backend خودش refresh می‌کند** (`POST $UPSTREAM_OAUTH_TOKEN_URL` با `grant_type=refresh_token` و `client_id` همان Claude Code؛ env جدید). توکن‌های چرخیده هم در volume `claude_state` (برای CLI) و هم رمزشده در `settings` (بقا بعد از از‌دست‌رفتن volume) ذخیره می‌شوند. sync هاست فقط وقتی import می‌کند که فایل هاست از آخرین seed **تغییر کرده** باشد (hash) — یعنی `claude login` دستی دوباره seed می‌کند ولی هرگز توکن‌های backend-managed را clobber نمی‌کند. اگر endpoint رفرش سرویس ثالث متفاوت بود → degrade شفاف به دستور «claude login روی سرور». وضعیت کامل در پنل ادمین.
 > ۳) **Issue C — تلاش مجدد نوبت شکست‌خورده (§۳، §۵.۱، §۸، §۹):** پیام دستیار شکست‌خورده با `status='failed'` + `error_code`/`error_reason` (دلیل کوتاه فارسی) persist می‌شود — شامل حالت `aborted_restart` استارتاپ. endpoint جدید `POST .../messages/{message_id}/retry` همان پیام کاربر قبلی را به‌صورت یک نوبت تازه دوباره اجرا می‌کند با **بازمصرف همان ردیف شکست‌خورده** (reset به `streaming`؛ نه حذف/ساخت مجدد)؛ فقط روی آخرین نوبت و فقط وقتی `failed`؛ از همان قفل busy و مسیر پس‌زمینه/reattach مسئلهٔ A عبور می‌کند؛ شارژ فقط به‌اندازهٔ اجرای واقعیِ retry. UI: دکمهٔ «تلاش مجدد» روی حباب خطا.
 > ۴) **مستندسازی موارد از قبل پیاده‌شده:** volume `claude_state` برای پایداری سشن‌های CLI + fallback خاموشِ resume در runner (§۵.۴)؛ `model_map` در `/internal/upstream-config` که handler قبل از relay اعمال می‌کند (§۶.۱)؛ نگاشت خطاهای 4xx/429/529 آپ‌استریم به کد/پیام فارسی در passthrough + side-channel گزارش usage واقعی (§۵.۲، §۶.۱).
-> ۵) تقسیم کار این اصلاحیه (A+B+C) در انتهای §۱۰.
+> ۵) **Issue D — کنترل و نمایش «سطح تفکر» (§۳، §۵.۱، §۵.۲، §۸، §۹):** picker سه‌سطحی سطح تفکر (خاموش/متوسط/عمیق) در چت وب؛ default به ازای گفتگو، override به ازای پیام. مکانیزم چت وب = env `MAX_THINKING_TOKENS` per-turn در subprocess CLI (نه تزریق keyword در متن). مسیر passthrough نامتقارن: فیلد `thinking` خود client دست‌نخورده رد می‌شود (ما تزریق نمی‌کنیم، strip هم نمی‌کنیم). توکن‌های تفکر در `usage.output_tokens` می‌آیند پس ledger وزن‌دار خودکار آن‌ها را با وزن output می‌شمارد (بدون multiplier جدا). رویداد `done` سطح واقعی‌استفاده‌شده را گزارش می‌دهد (badge روی پاسخ). cap سراسری با env؛ cap per-policy nice-to-have.
+> ۶) تقسیم کار این اصلاحیه (A+B+C+D) در انتهای §۱۰.
 
 > **اصلاحیهٔ ۱ (2026-08-20، دستور تغییر مالک محصول):**
 > ۱) آپ‌استریم دیگر Claude خودِ Anthropic نیست؛ یک سرویس ثالث **Claude-سازگار** است (همان API؛ خود Claude Code CLI با آن کار می‌کند و اشتراک‌گذاری بین کاربران مجاز است → ریسک ToS منتفی). آدرس آپ‌استریم همه‌جا از `UPSTREAM_BASE_URL` می‌آید و هرگز hardcode نمی‌شود.
@@ -154,6 +155,7 @@ CLAUDE_CREDS_DIR=/home/amin/.claude   # مسیر اعتبارنامهٔ Claude C
 CLI_MAX_CONCURRENCY=4                 # سقف پروسه‌های هم‌زمان CLI (کل سیستم)
 CLI_TIMEOUT_SECONDS=300               # حداکثر عمر یک اجرای CLI به ازای هر پیام
 MOCK_CLI=0                            # 1 → runner به‌جای claude، /app/bin/mock-claude را اجرا می‌کند
+THINKING_MAX_LEVEL=deep               # سقف سراسری سطح تفکر (Issue D): off | standard | deep
 
 # --- رمزنگاری ---
 ECOCODE_SECRET_KEY=<32-byte base64>   # کلید Fernet برای رمز کردن کلید apikey آپ‌استریم
@@ -194,6 +196,7 @@ CREATE TYPE user_role   AS ENUM ('admin', 'user');
 CREATE TYPE auth_source AS ENUM ('local', 'ldap');
 CREATE TYPE quota_period AS ENUM ('daily', 'weekly', 'monthly');
 CREATE TYPE upstream_mode AS ENUM ('mock', 'cli_creds', 'apikey');
+CREATE TYPE thinking_level AS ENUM ('off', 'standard', 'deep');   -- اصلاحیهٔ ۲ / Issue D
 
 -- ============ users ============
 -- کاربر محلی و کاربر لینک‌شده به LDAP در یک جدول.
@@ -302,6 +305,8 @@ CREATE TABLE conversations (
     model_id        BIGINT REFERENCES models(id),      -- مدل انتخابی این گفتگو
     -- شناسهٔ سشن Claude Code CLI برای resume (--resume). NULL تا اولین پیام.
     cli_session_id  TEXT,
+    -- Issue D: سطح تفکر پیش‌فرض این گفتگو؛ هر پیام می‌تواند override کند.
+    thinking_level  thinking_level NOT NULL DEFAULT 'standard',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at      TIMESTAMPTZ                         -- soft delete
@@ -325,6 +330,9 @@ CREATE TABLE messages (
     error_code      VARCHAR(40),   -- 'quota_exceeded' | 'upstream_rate_limited' | 'cli_error'
                                    -- | 'timeout' | 'aborted_restart'
     error_reason    TEXT,          -- دلیل کوتاه فارسی قابل‌نمایش در حباب خطا
+    -- Issue D: سطح تفکرِ عملاً‌استفاده‌شده برای این نوبت (روی ردیف assistant پر می‌شود؛
+    -- منبع badge در UI). پس از cap سراسری/policy محاسبه می‌شود، نه صرفاً درخواست کاربر.
+    thinking_level  thinking_level,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_msg_conv      ON messages(conversation_id, created_at);
@@ -508,13 +516,14 @@ Browser ──(session cookie)──▶ POST /api/conversations/{id}/messages   
  [۷ RUN CLI]  spawn پروسهٔ Claude Code headless (مشخصات ۵.۴):
             claude -p "<متن>" --output-format stream-json --verbose
                    --model <upstream_model> [--resume <cli_session_id>]
+            env شامل MAX_THINKING_TOKENS بر اساس سطح تفکر مؤثر (Issue D، §۵.۷).
             cwd = workspace کاربر (ساخت 0700 در اولین بار؛ attachmentها قبلاً کپی شده‌اند).
  [۸ BUFFER] هر رویداد ترجمه‌شده (نگاشت ۵.۳) به ring buffer نوبت append و
             cond.notify_all() → همهٔ streamهای متصل، live دنبال می‌کنند.
  [۹ FINALIZE] رویداد result → usage → credits → INSERT usage_ledger
             (surface='web_chat', request_id=cli_session_id).
-            UPDATE ردیف assistant: content=متن نهایی، content_blocks، status='complete'
-            (خطا/timeout → status='failed' + error_code/error_reason فارسی + رویداد error در buffer).
+            UPDATE ردیف assistant: content=متن نهایی، content_blocks، status='complete'،
+            thinking_level=<سطح مؤثر> (خطا/timeout → status='failed' + error_code/error_reason فارسی + رویداد error در buffer).
             conversations.cli_session_id (بار اول) + updated_at.
             registry حذف پس از terminal event (buffer تا بسته‌شدن آخرین مشترک زنده می‌ماند).
 
@@ -575,6 +584,8 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 
 نکتهٔ streaming: litellm خطای بعد از شروعِ استریم را به‌صورت HTTP 200 + یک رویداد `data:{"error":...,"code":"429"}` گزارش می‌کند؛ backend **قبل از تعهد به 200 خودش، اولین رویداد SSE را peek می‌کند** (fail-fast) تا 429/401 واقعی به client برسد نه یک استریم خالی.
 
+**سطح تفکر در passthrough (Issue D — نامتقارن با چت وب):** در این مسیر client صاحب تفکر است. اگر body شامل `thinking: {type:"enabled", budget_tokens:N}` (Anthropic) بود، **دست‌نخورده** رد می‌شود؛ ما نه تزریق می‌کنیم و نه strip. تبدیل `_to_anthropic_body` در handler باید فیلد `thinking` را در صورت وجود منتقل کند (امروز فقط system/messages/max_tokens/temperature را منتقل می‌کند — یک خط پاس‌دادن `thinking` اضافه شود). ابزارهایی مثل Cline خودشان تنظیم می‌کنند. برخلاف چت وب، اینجا `MAX_THINKING_TOKENS` معنا ندارد (پروسهٔ CLI نیست).
+
 **نکتهٔ کلیدی:** auth/ACL/quota/ledger **در backend ما** اتفاق می‌افتد، نه در LiteLLM و نه در CLI. Cline هرگز مستقیم به LiteLLM یا آپ‌استریم نمی‌رسد (PRD بند ۴).
 
 ### ۵.۳ نگاشت stream-json → SSE ما (چت وب)
@@ -586,7 +597,7 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 | `{"type":"system","subtype":"init","session_id":...}` | `event: start` `{conversation_id}` (+ ذخیرهٔ cli_session_id) |
 | `{"type":"assistant","message":{content:[{type:"text",...}]}}` | `event: delta` `{text}` (متن تدریجی) |
 | بلوک `tool_use` در پیام assistant (مثلاً Write/Edit) | `event: tool` `{name, summary}` — UI به‌صورت «در حال ساخت فایل …» نشان می‌دهد |
-| `{"type":"result","usage":{...},"is_error":false}` | `event: done` `{credits_used, files_changed[]}` |
+| `{"type":"result","usage":{...},"is_error":false}` | `event: done` `{credits_used, files_changed[], thinking_level}` (Issue D: سطح مؤثر برای badge) |
 | `{"type":"result","is_error":true}` یا خطای پروسه | `event: error` `{message فارسی}` |
 | — (فقط `GET /stream` وقتی نوبت فعالی نیست) | `event: idle` `{}` و بستن اتصال |
 
@@ -622,7 +633,24 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 2. روی stdout به ترتیب emit می‌کند: `system:init` (با session_id ثابتِ برگرفته از `--resume` یا تصادفی) → چند رویداد `assistant` متنی با تأخیر مصنوعی (تست رندر تدریجی) → یک بلوک `tool_use` از نوع Write و **واقعاً یک فایل نمونه در cwd می‌سازد** (تست پنل فایل‌ها) → `result` با usage جعلی معقول (مثلاً in=1200, out=350, cache_read=400).
 3. exit code 0.
 
-نتیجه: کل مسیر چت وب + پنل فایل‌ها + ledger بدون هیچ credential واقعی E2E-تست می‌شود.
+نتیجه: کل مسیر چت وب + پنل فایل‌ها + ledger بدون هیچ credential واقعی E2E-تست می‌شود. (Issue D: mock-claude مقدار `MAX_THINKING_TOKENS` را از env می‌خواند و در usageِ `result` خود منعکس می‌کند — output_tokens جعلی متناسب با سطح بزرگ‌تر — تا badge و تفاوت credit در تست دیده شود.)
+
+### ۵.۷ کنترل «سطح تفکر» چت وب (Issue D — قطعی)
+
+**نردبان سطوح (۳ سطح، قطعی):**
+
+| سطح (enum) | برچسب فارسی | `MAX_THINKING_TOKENS` |
+|---|---|---|
+| `off` | خاموش | env تنظیم **نمی‌شود** (پیش‌فرض مدل؛ عملاً بدون تفکر گسترده) |
+| `standard` | متوسط | `8000` |
+| `deep` | عمیق | `24000` |
+
+- **مکانیزم (env، نه keyword):** runner در `_build_env` (پیاده‌شده در `backend/app/cli_runner.py`) بر اساس سطح مؤثر، `MAX_THINKING_TOKENS` را به env whitelist‌شدهٔ subprocess اضافه می‌کند. برای `off` کلید اصلاً ست نمی‌شود. **هیچ تزریق keyword** («ultrathink» و…) در متن کاربر انجام نمی‌شود — تا صریح و بدون آلودگی پیام باشد و در usage قابل حسابرسی بماند.
+- **تعیین سطح مؤثر:** `effective = min(requested_or_conversation_default, cap)` که `cap = min(THINKING_MAX_LEVEL env, policy_cap کاربر در صورت وجود)`. ترتیب سطوح: `off < standard < deep`. سطح مؤثر همان چیزی است که در `messages.thinking_level` و رویداد `done` گزارش می‌شود (نه صرفاً خواستهٔ کاربر) تا badge دقیق باشد.
+- **default و override:** اگر پیام `thinking_level` نداشت، `conversations.thinking_level` استفاده می‌شود؛ اگر کاربر در پیام سطحی انتخاب کرد و متفاوت از default گفتگو بود، هم آن نوبت با آن اجرا می‌شود و هم **default گفتگو به همان به‌روز می‌شود** (رفتار «چسبنده» مورد انتظار کاربر؛ ساده و قابل‌پیش‌بینی).
+- **cap ادمین:** فاز فعلی فقط cap سراسری با `THINKING_MAX_LEVEL` (env). cap per-user/policy به‌عنوان nice-to-have: یک ستون اختیاری `max_thinking_level` روی `quotas` یا policy در فاز بعد؛ همین حالا فقط در تابع محاسبهٔ `cap` یک نقطهٔ توسعه گذاشته می‌شود. **over-build نکنید.**
+
+**عدالت credit (تأییدشده):** توکن‌های تفکر توسط سرویس آپ‌استریم در `usage.output_tokens` شمرده می‌شوند (extended thinking = output). رویداد `result` خروجی CLI هم همان `output_tokens` تجمیعی را می‌دهد؛ runner آن را مستقیم در ledger با **وزن output مدل** ثبت می‌کند (§ضمیمهٔ الف). پس سطح بالاتر تفکر خودکار گران‌تر است و **هیچ multiplier جداگانه‌ای لازم نیست**. تنها در صورتی که سرویس آپ‌استریم فیلد usage جداگانه‌ای برای thinking tokens برگرداند (مثلاً `thinking_tokens` مجزا)، آن‌را به bucket خروجی اضافه کرده و با همان `output_weight` وزن می‌دهیم — هرگز رایگان حساب نمی‌شود.
 
 ---
 
@@ -753,7 +781,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 |---|---|---|---|
 | POST | `/api/auth/login` | عمومی | لاگین (username, password) → set cookie |
 | POST | `/api/auth/logout` | user | حذف session |
-| GET | `/api/auth/me` | user | اطلاعات کاربر جاری + role + مدل‌های مجاز + خلاصهٔ سهمیه |
+| GET | `/api/auth/me` | user | اطلاعات کاربر جاری + role + مدل‌های مجاز + خلاصهٔ سهمیه + **`max_thinking_level` مؤثر** (Issue D؛ برای محدودکردن picker) |
 
 ### چت و تاریخچه (کاربر)
 | متد | مسیر | هدف |
@@ -761,9 +789,9 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | GET | `/api/conversations` | لیست گفتگوهای کاربر (paginate, search با `?q=`) — هر آیتم شامل **`generating: bool`** |
 | POST | `/api/conversations` | ساخت گفتگوی جدید (`{title?, model_key}`) |
 | GET | `/api/conversations/{id}` | جزئیات + پیام‌ها (فقط مالک) + `generating` + `status` هر پیام (`complete`/`streaming`/`failed`) |
-| PATCH | `/api/conversations/{id}` | تغییر عنوان / مدل |
+| PATCH | `/api/conversations/{id}` | تغییر عنوان / مدل / **`thinking_level` پیش‌فرض** (Issue D) |
 | DELETE | `/api/conversations/{id}` | حذف (soft) — سشن CLI مرتبط دیگر resume نمی‌شود |
-| POST | `/api/conversations/{id}/messages` | **پذیرش نوبت** (pipeline ۵.۱): اعتبارسنجی سنکرون (401/403/409/429) سپس **202** `{assistant_message_id, generating:true}` — پاسخ SSE نمی‌دهد؛ اجرای CLI در پس‌زمینه ادامه می‌یابد حتی اگر client برود |
+| POST | `/api/conversations/{id}/messages` | **پذیرش نوبت** (pipeline ۵.۱): body `{content, thinking_level?}` (Issue D: اختیاری؛ نبود → default گفتگو)؛ اعتبارسنجی سنکرون (401/403/409/429) سپس **202** `{assistant_message_id, generating:true, thinking_level:<مؤثر>}` — پاسخ SSE نمی‌دهد؛ اجرای CLI در پس‌زمینه ادامه می‌یابد حتی اگر client برود |
 | GET | `/api/conversations/{id}/stream` | **استریم/reattach (SSE، پروتکل ۵.۳):** نوبت فعال → replay بافر از ابتدا + دنبالهٔ زنده تا `done`/`error`؛ نوبت فعال نیست → `event: idle` و بستن. idempotent — هر تعداد بار و از هر تب |
 | POST | `/api/conversations/{id}/messages/{message_id}/retry` | **تلاش مجدد نوبت شکست‌خورده** (Issue C، معناشناسی §۵.۱): فقط آخرین پیامِ `failed`؛ reset همان ردیف به `streaming` و اجرای نوبت تازه با متن پیام user قبلی → **202** `{assistant_message_id, generating:true}`؛ خطاها: 409 `not_retryable`/`chat_busy`، 403، 429 |
 | POST | `/api/conversations/{id}/attachments` | آپلود فایل (multipart) → کپی داخل workspace + attachment id |
@@ -863,6 +891,8 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 
 **اجزای کلیدی چت:**
 - **model picker** فیلترشده به مدل‌های مجاز کاربر (از `/api/auth/me`).
+- **thinking-level picker (Issue D):** کنترل کوچک کنار model picker با ۳ گزینه (خاموش/متوسط/عمیق)، محدود به `max_thinking_level` از `/api/auth/me`. مقدار اولیه = `conversations.thinking_level`؛ تغییر آن هم روی نوبت بعد اعمال می‌شود هم default گفتگو را به‌روز می‌کند (رفتار چسبنده §۵.۷). در body پیام به‌صورت `thinking_level` می‌رود.
+- **badge سطح تفکر روی پاسخ:** هر حباب assistant که `thinking_level` دارد (از رویداد `done` یا `GET conversation`) یک badge کوچک نشان می‌دهد (مثلاً «تفکر: عمیق»)؛ `off` badge ندارد.
 - **چرخهٔ ارسال/استریم (اصلاحیهٔ ۲):** ارسال = `POST messages` → 202 → بلافاصله باز کردن `GET /stream` و رندر رویدادها. **باز کردن هر گفتگو:** ابتدا `GET /api/conversations/{id}`؛ اگر `generating:true` (یا آخرین پیام `status='streaming'`) → اتصال خودکار به `/stream` و رندر replay از ابتدای نوبت — از دید کاربر انگار هیچ‌وقت قطع نشده. رویداد `idle` → اتصال بسته، حالت عادی. `done` → refresh فایل‌ها/مصرف (مثل قبل) + invalidate لیست گفتگوها (خاموش‌شدن اسپینر).
 - **اسپینر سایدبار:** آیتم‌هایی که `generating:true` دارند اسپینر کوچک می‌گیرند؛ لیست با polling سبک TanStack Query (هر ۱۰s وقتی حداقل یک generating هست) یا invalidate بعد از `done`.
 - **حباب شکست‌خورده + تلاش مجدد (Issue C):** پیام assistant با `status='failed'` به‌صورت حباب خطا رندر می‌شود: `error_reason` فارسی + دکمهٔ **«تلاش مجدد»** (فقط وقتی آخرین پیام گفتگوست). کلیک → `POST .../retry` → 202 → همان حباب به حالت استریم برمی‌گردد و `/stream` باز می‌شود. حالت `aborted_restart` («سرویس هنگام تولید پاسخ راه‌اندازی مجدد شد») همین مسیر را دارد.
@@ -936,20 +966,24 @@ repo/
 - [ ] **(اصلاحیهٔ ۲)** retry روی پیام غیرآخر/غیرfailed → 409 `not_retryable`؛ retry هم‌زمان دوم → 409.
 - [ ] **(اصلاحیهٔ ۲)** انقضای مصنوعی access token (دستکاری expiresAt در mock) → auto-refresh اجرا، توکن چرخیده در volume + settings؛ کارت ادمین «آخرین refresh: موفق». خراب کردن refresh token → auto_refresh=failed + CTA فارسی.
 - [ ] **(اصلاحیهٔ ۲)** `claude login` جدید روی هاست (تغییر فایل seed) → ظرف ≤۶۰s adopt؛ فایل هاست دست‌نخورده → هرگز توکن backend-managed را clobber نمی‌کند.
+- [ ] **(اصلاحیهٔ ۲ / D)** انتخاب سطح «عمیق» → `MAX_THINKING_TOKENS=24000` در env پروسه؛ badge «تفکر: عمیق» روی پاسخ؛ output_tokens و در نتیجه credit نسبت به «متوسط» بیشتر است (با mock هم دیده می‌شود). سطح بالاتر از `THINKING_MAX_LEVEL` در UI اصلاً قابل انتخاب نیست و در backend هم cap می‌شود.
+- [ ] **(اصلاحیهٔ ۲ / D)** passthrough: ارسال `thinking:{type:"enabled",budget_tokens:N}` از Cline دست‌نخورده به آپ‌استریم می‌رسد (strip نمی‌شود، تزریق هم نمی‌شود).
 - [ ] `openapi.json` نسخهٔ فرانت با backend یکی است (CI diff).
 
-### تقسیم کار اصلاحیهٔ ۲ (Issues A+B+C)
+### تقسیم کار اصلاحیهٔ ۲ (Issues A+B+C+D)
 
 **Dev1 — backend (به این ترتیب):**
 1. **A:** ستون‌های `messages.status/error_code/error_reason` + migration + مارک `failed/aborted_restart` در استارتاپ؛ `TurnRegistry` + ring buffer + جداسازی نوبت به `asyncio.create_task`؛ تبدیل `POST messages` به 202؛ endpoint جدید `GET /stream` (replay+live+idle)؛ فلگ `generating` در دو endpoint گفتگو.
 2. **C:** endpoint `POST .../messages/{id}/retry` با گاردها و reset-in-place (§۵.۱)؛ پرکردن error_code/error_reason در همهٔ مسیرهای شکست (cli_error/timeout/quota/upstream_rate_limited).
 3. **B:** ارتقای `app/upstream/credentials.py` به TokenManager: seed-بر-تغییر (hash)، refresh خودکار single-flight علیه `UPSTREAM_OAUTH_TOKEN_URL`، persist دوگانه (volume + settings رمزشده)، بازیابی استارتاپ، حالت‌های `active/degraded/failed`، فیلدهای جدید status؛ env جدید در `.env.example`.
-4. regenerate `docs/openapi.json` و اطلاع به Dev2.
+4. **D:** enum `thinking_level` + ستون‌های `conversations.thinking_level`/`messages.thinking_level` (migration)؛ نگاشت سطح→`MAX_THINKING_TOKENS` و افزودن به `_build_env` (فقط چت وب)؛ محاسبهٔ سطح مؤثر با cap (`THINKING_MAX_LEVEL` + نقطهٔ توسعهٔ policy)؛ افزودن `thinking_level` به body پذیرش پیام، رویداد `done`، و `PATCH conversation`؛ **پاس‌دادن `thinking` client در `_to_anthropic_body` handler** (passthrough)؛ تأیید ثبت output_tokens شامل thinking در ledger؛ `max_thinking_level` در `/api/auth/me`؛ به‌روزرسانی mock-claude برای انعکاس env در usage.
+5. regenerate `docs/openapi.json` و اطلاع به Dev2.
 
 **Dev2 — frontend:**
 1. **A:** بازنویسی چرخهٔ ارسال (202 + همیشه `GET /stream`)، reattach خودکار هنگام باز کردن گفتگوی `generating`، رندر رویداد `idle`، اسپینر سایدبار + invalidate بعد از `done`.
 2. **C:** حباب `failed` با `error_reason` فارسی + دکمهٔ «تلاش مجدد» (فقط آخرین نوبت) + برگشت حباب به حالت استریم پس از 202.
 3. **B:** کارت وضعیت توکن در `/admin/settings` (چهار فیلد + CTA شرطی).
+4. **D:** thinking-level picker کنار model picker (محدود به `max_thinking_level`)، ارسال `thinking_level` در body، همگام‌سازی با default گفتگو، و badge سطح تفکر روی حباب‌های assistant.
 
 ---
 

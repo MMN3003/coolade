@@ -201,7 +201,10 @@ async def anthropic_messages(
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 
     if not stream:
-        resp = await litellm_client.call_chat("/chat/completions", openai_body)
+        try:
+            resp = await litellm_client.call_chat("/chat/completions", openai_body)
+        except UpstreamServiceError as exc:
+            raise _upstream_error(exc)
         choice = (resp.get("choices") or [{}])[0]
         text = ((choice.get("message") or {}).get("content")) or ""
         usage = resp.get("usage") or {}
@@ -228,6 +231,11 @@ async def anthropic_messages(
             }
         )
 
+    try:
+        upstream = await _open_upstream_stream(openai_body)
+    except UpstreamServiceError as exc:
+        raise _upstream_error(exc)
+
     async def event_stream():
         def sse(event: str, data: dict) -> bytes:
             return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
@@ -252,7 +260,7 @@ async def anthropic_messages(
         )
 
         fallback_usage: dict = {}
-        async for chunk in iter_sse_json(litellm_client.stream_chat("/chat/completions", openai_body)):
+        async for chunk in iter_sse_json(upstream):
             if chunk is None:
                 break
             choices = chunk.get("choices") or []
@@ -318,7 +326,10 @@ async def chat_completions(
     api_key_id = principal.api_key.id
 
     if not stream:
-        resp = await litellm_client.call_chat("/chat/completions", body)
+        try:
+            resp = await litellm_client.call_chat("/chat/completions", body)
+        except UpstreamServiceError as exc:
+            raise _upstream_error(exc)
         await _record_ledger(
             user_id=user_id,
             api_key_id=api_key_id,
@@ -329,10 +340,15 @@ async def chat_completions(
         )
         return JSONResponse(resp)
 
+    try:
+        upstream = await _open_upstream_stream(body)
+    except UpstreamServiceError as exc:
+        raise _upstream_error(exc)
+
     async def event_stream():
         fallback_usage: dict = {}
         buffer = b""
-        async for raw in litellm_client.stream_chat("/chat/completions", body):
+        async for raw in upstream:
             buffer += raw
             yield raw
             while b"\n\n" in buffer:
