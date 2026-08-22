@@ -1,15 +1,19 @@
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Paper from '@mui/material/Paper';
 import Grid from '@mui/material/Grid';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 import Table from '@mui/material/Table';
 import TableBody from '@mui/material/TableBody';
 import TableCell from '@mui/material/TableCell';
 import TableHead from '@mui/material/TableHead';
 import TableRow from '@mui/material/TableRow';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import {
   ResponsiveContainer,
   LineChart,
@@ -27,9 +31,11 @@ import { formatCredits, formatPersianShortDate } from '@/utils/date';
 import { getErrorMessage } from '@/utils/errors';
 import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
+import AccountLimitsCard from '@/components/admin/AccountLimitsCard';
 
 export default function AdminUsagePage() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const query = useQuery({ queryKey: ['admin', 'usage'], queryFn: adminUsageApi.summary });
 
   if (query.isLoading) return <LoadingState />;
@@ -63,6 +69,9 @@ export default function AdminUsagePage() {
         </Typography>
       </Paper>
 
+      {/* اصلاحیهٔ ۳ / Issue F */}
+      <AccountLimitsCard />
+
       <Paper sx={{ p: 3, mb: 3 }}>
         <Typography variant="subtitle1" fontWeight={600} gutterBottom>
           {t('admin.usage.dailyTrend')}
@@ -95,14 +104,23 @@ export default function AdminUsagePage() {
                   <TableCell>#</TableCell>
                   <TableCell>{t('common.name')}</TableCell>
                   <TableCell align="left">{t('usage.credits')}</TableCell>
+                  <TableCell align="left">{t('common.actions')}</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {rankedUsers.map((u, idx) => (
-                  <TableRow key={u.user_id}>
+                  <TableRow key={u.user_id} hover>
                     <TableCell>{idx + 1}</TableCell>
                     <TableCell>{u.username}</TableCell>
                     <TableCell align="left">{formatCredits(u.credits)}</TableCell>
+                    <TableCell align="left">
+                      {/* اصلاحیهٔ ۳ / Issue G: drill-down from the org-usage ranking */}
+                      <Tooltip title={t('usage.viewReport')}>
+                        <IconButton size="small" onClick={() => navigate(`/admin/users/${u.user_id}/usage`)}>
+                          <AssessmentOutlinedIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

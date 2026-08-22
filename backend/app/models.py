@@ -171,6 +171,10 @@ class Quota(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     bonus_credits: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    # اصلاحیهٔ ۳ / Issue E: rolling 5h cap. NULL/0 = unlimited (not enforced).
+    # Rolling window, no period_start/bonus semantics — usage is computed live from
+    # usage_ledger over [now - ROLLING_WINDOW_HOURS, now] (TECH.md 5.8).
+    limit_credits_5h: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
     updated_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -312,6 +316,33 @@ class AuditLog(Base):
         Index("idx_audit_time", "created_at"),
         Index("idx_audit_action", "action", "created_at"),
     )
+
+
+class UpstreamAccountLimit(Base):
+    """اصلاحیهٔ ۳ / Issue F (TECH.md section 3, 4.5).
+
+    State of the upstream account's OWN rate-limit windows, extracted from the
+    `anthropic-ratelimit-*` response headers seen on the passthrough path (plus an
+    optional periodic probe). One row per window the upstream service discloses
+    (e.g. '5h', 'weekly', 'unified', or whatever it actually names its headers —
+    we never assume exact names, TECH.md 4.5). State only (not a time series);
+    upsert keyed by window_key. If upstream never sends such headers this table
+    simply stays empty — no fabricated numbers (TECH.md's "honest design").
+    """
+
+    __tablename__ = "upstream_account_limits"
+
+    window_key: Mapped[str] = mapped_column(String(40), primary_key=True)
+    limit_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    remaining_value: Mapped[Decimal | None] = mapped_column(Numeric(18, 2))
+    reset_at: Mapped[datetime.datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    unit: Mapped[str | None] = mapped_column(String(30))
+    raw_headers: Mapped[dict | None] = mapped_column(JSONB)
+    source: Mapped[str] = mapped_column(String(20), nullable=False)  # 'passthrough' | 'probe'
+    last_updated: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    upstream_request_id: Mapped[str | None] = mapped_column(String(100))
 
 
 class Setting(Base):

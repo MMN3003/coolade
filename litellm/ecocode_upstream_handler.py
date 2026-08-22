@@ -20,6 +20,7 @@ R3) — it is a dumb HTTP relay:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -35,6 +36,17 @@ LITELLM_MASTER_KEY = os.environ.get("LITELLM_MASTER_KEY", "")
 
 _CONFIG_TTL_SECONDS = 15.0
 _config_cache: dict[str, Any] = {"value": None, "ts": 0.0}
+
+# Keep a reference to fire-and-forget background tasks so asyncio doesn't garbage
+# collect them mid-flight (a bare `asyncio.create_task(...)` with no held reference
+# risks "Task was destroyed but it is pending").
+_bg_tasks: "set[asyncio.Task]" = set()
+
+
+def _fire_and_forget(coro: Any) -> None:
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
 
 
 async def _get_upstream_config() -> dict[str, Any]:
@@ -80,6 +92,27 @@ async def _report_usage(request_id: str | None, usage: dict[str, Any], upstream_
                     "cache_write_tokens": int(usage.get("cache_creation_input_tokens", 0) or 0),
                     "upstream_request_id": upstream_request_id,
                 },
+            )
+    except Exception:
+        pass
+
+
+async def _report_upstream_limits(resp_headers: Any, upstream_request_id: str | None) -> None:
+    """اصلاحیهٔ ۳ / Issue F (TECH.md 4.5, 6.1): capture ALL response headers whose
+    name starts with `anthropic-ratelimit` — raw, case-insensitive, no exact-name
+    assumption — and fire-and-forget them to backend's internal endpoint. Parsing
+    into window/limit/remaining/reset happens in backend (one place); this handler
+    stays a dumb relay. A failure here must never affect the user-facing request,
+    hence the broad except."""
+    try:
+        raw = {k: v for k, v in resp_headers.items() if k.lower().startswith("anthropic-ratelimit")}
+        if not raw:
+            return
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(
+                f"{BACKEND_INTERNAL_URL}/internal/upstream-limits",
+                headers={"Authorization": f"Bearer {LITELLM_MASTER_KEY}"},
+                json={"raw_headers": raw, "upstream_request_id": upstream_request_id, "source": "passthrough"},
             )
     except Exception:
         pass
@@ -197,6 +230,9 @@ class EcoCodeUpstreamAdapter(CustomLLM):
             resp = await http_client.post(
                 f"{cfg['base_url']}/v1/messages", json=body, headers=_anthropic_headers(cfg)
             )
+            # Issue F: capture rate-limit headers regardless of status (429s often
+            # carry the most useful ones) — fire-and-forget, never blocks the reply.
+            _fire_and_forget(_report_upstream_limits(resp.headers, resp.headers.get("request-id")))
             if resp.status_code >= 400:
                 _raise_upstream_http_error(resp.status_code, resp.text, model)
             data = resp.json()
@@ -255,6 +291,9 @@ class EcoCodeUpstreamAdapter(CustomLLM):
             async with http_client.stream(
                 "POST", f"{cfg['base_url']}/v1/messages", json=body, headers=_anthropic_headers(cfg)
             ) as resp:
+                # Issue F: headers are available as soon as the response opens —
+                # capture before consuming the body so it works even on error status.
+                _fire_and_forget(_report_upstream_limits(resp.headers, resp.headers.get("request-id")))
                 if resp.status_code >= 400:
                     detail = (await resp.aread()).decode("utf-8", "replace")
                     _raise_upstream_http_error(resp.status_code, detail, model)

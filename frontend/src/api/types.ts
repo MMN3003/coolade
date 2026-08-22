@@ -16,12 +16,30 @@
  *    object comes from a follow-up GET /api/auth/me.
  *
  * ---------------------------------------------------------------------------
- * اصلاحیهٔ ۲ (docs/TECH.md v1.2) — NOT YET reconciled against openapi.json.
- * Dev1 is implementing the backend in parallel; docs/openapi.json on disk at
- * the time this was written is still the v1.1 shape (no /stream, no /retry,
- * no thinking_level, no generating flag). Everything below marked "اصلاحیهٔ ۲"
- * is built directly against docs/TECH.md §5.3/§8 prose and MUST be reconciled
- * (field names, exact event payloads) once Dev1 regenerates openapi.json.
+ * اصلاحیهٔ ۲ (docs/TECH.md v1.2) — reconciled against openapi.json 1.2.0.
+ * ---------------------------------------------------------------------------
+ * اصلاحیهٔ ۳ (docs/TECH.md v1.3, Issues E/F/G) — NOT YET frozen in openapi.json
+ * (still 1.2.0 on disk: no 5h fields, no account-limits, no per-user usage
+ * endpoint). Dev1 is implementing the backend in parallel on the same
+ * working tree; the shapes below were aligned against Dev1's in-progress
+ * (uncommitted) `backend/app/schemas.py` / `routers/admin_users.py` /
+ * `routers/admin_upstream.py` / `services/{quota,account_limits}.py` at the
+ * time this was written, NOT just TECH.md prose — so field names should be
+ * close, but this is still pre-freeze and MUST be re-verified once Dev1
+ * regenerates openapi.json:
+ *  - `GET /api/usage/me` / `PUT .../quota`: flat `used_5h` / `limit_credits_5h`
+ *    / `reset_5h_at` (mirrors `quotas.limit_credits_5h` 1:1) — confirmed.
+ *  - `GET /api/admin/upstream/account-limits`: window items use `key`
+ *    (not `window`) and `reset` (not `reset_at`) — confirmed against
+ *    `services/account_limits.py#get_account_limits_view`.
+ *  - `GET /api/admin/users/{id}/usage`: NOT a flat superset of
+ *    `UsageMeResponse` — nests `weekly: {used, limit, bonus, period,
+ *    period_start, reset_at}` and `five_hour: {used_5h, limit_credits_5h,
+ *    reset_5h_at}` — confirmed against `schemas.py#AdminUserUsageResponse`.
+ *  - 429 error bodies for `quota_exceeded`/`quota_exceeded_5h` put
+ *    `reset_at`/`reset_5h_at` NESTED inside `error` (confirmed against
+ *    `errors.py#AppError.extra` / `app_error_handler`), not top-level;
+ *    `client.ts#parseErrorBody` still defensively checks both.
  * ---------------------------------------------------------------------------
  */
 
@@ -51,6 +69,15 @@ export interface ApiErrorBody {
     code: string;
     message: string;
   };
+  /**
+   * اصلاحیهٔ ۳ / Issue E (TECH.md §5.8, §8): 429 bodies for `quota_exceeded` /
+   * `quota_exceeded_5h` carry the reset time so the client can show "تا آزاد
+   * شدن پنجره صبر کنید". Confirmed (against Dev1's in-progress `errors.py`)
+   * to be nested inside `error` (`error.reset_at`/`error.reset_5h_at`), not
+   * top-level; kept here too as a defensive fallback in `client.ts`.
+   */
+  reset_at?: string | null;
+  reset_5h_at?: string | null;
 }
 
 export interface OkResponse {
@@ -256,6 +283,24 @@ export interface UsageDailyPoint {
   credits: number;
 }
 
+/**
+ * اصلاحیهٔ ۳ / Issue E (TECH.md §5.8, §8): rolling 5h block. `limit_credits_5h`
+ * null/0 = unlimited (no cap set) → UI must hide the 5h bar entirely.
+ * `reset_5h_at` is the "partial freeing" time (§5.8: when the oldest credit
+ * inside the window ages out), null when nothing is in the window yet.
+ */
+export interface FiveHourUsageWire {
+  used_5h: DecimalString;
+  limit_credits_5h: DecimalString | null;
+  reset_5h_at: string | null;
+}
+
+export interface FiveHourUsage {
+  used_5h: number;
+  limit_credits_5h: number | null;
+  reset_5h_at: string | null;
+}
+
 export interface UsageMeResponseWire {
   period: QuotaPeriod;
   period_start: string;
@@ -265,6 +310,10 @@ export interface UsageMeResponseWire {
   by_model: UsageByModelWire[];
   by_key: UsageByKeyWire[];
   daily: UsageDailyPointWire[];
+  /** اصلاحیهٔ ۳ / Issue E — flat fields per §8, absent/null on a not-yet-upgraded backend. */
+  used_5h?: DecimalString | null;
+  limit_credits_5h?: DecimalString | null;
+  reset_5h_at?: string | null;
 }
 
 export interface UsageMeResponse {
@@ -276,6 +325,8 @@ export interface UsageMeResponse {
   by_model: UsageByModel[];
   by_key: UsageByKey[];
   daily: UsageDailyPoint[];
+  /** اصلاحیهٔ ۳ / Issue E — null when the backend hasn't shipped this yet, or no cap is set. */
+  fiveHour: FiveHourUsage | null;
 }
 
 // ---------- admin: users ----------
@@ -297,6 +348,8 @@ export interface AdminQuotaWire {
   limit_credits: DecimalString;
   bonus_credits: DecimalString;
   period_start: string;
+  /** اصلاحیهٔ ۳ / Issue E (TECH.md §3 quotas.limit_credits_5h) — null/absent = unlimited. */
+  limit_credits_5h?: DecimalString | null;
 }
 
 export interface AdminQuota {
@@ -304,6 +357,7 @@ export interface AdminQuota {
   limit_credits: number;
   bonus_credits: number;
   period_start: string;
+  limit_credits_5h: number | null;
 }
 
 export interface AdminUserDetailWire extends AdminUser {
@@ -342,6 +396,11 @@ export interface SetPolicyRequest {
 export interface SetQuotaRequest {
   period: QuotaPeriod;
   limit_credits: number; // accepted as number|string server-side
+  /**
+   * اصلاحیهٔ ۳ / Issue E (TECH.md §8): `PUT .../quota` "now accepts
+   * limit_credits_5h". null/omitted/0 = unlimited (no 5h cap enforced).
+   */
+  limit_credits_5h?: number | null;
 }
 
 export interface AddQuotaBonusRequest {
@@ -424,6 +483,69 @@ export interface AdminUsageResponse {
   daily: UsageDailyPoint[];
 }
 
+// ---------- admin: per-user usage report (اصلاحیهٔ ۳ / Issue G) ----------
+
+/**
+ * `weekly` block of `GET /api/admin/users/{id}/usage` — note the field names
+ * differ from `UsageMeResponse` (`used`/`limit`/`bonus`, not
+ * `used_credits`/`limit_credits`/`bonus_credits`), and it additionally
+ * reports `reset_at` (the upcoming period boundary, `period_start +
+ * period_length`) which the self-service `/usage/me` endpoint does not.
+ * Confirmed against Dev1's in-progress `schemas.py#WeeklyQuotaBlock`.
+ */
+export interface WeeklyQuotaBlockWire {
+  used: DecimalString;
+  limit: DecimalString;
+  bonus: DecimalString;
+  period: QuotaPeriod;
+  period_start: string;
+  reset_at: string;
+}
+
+export interface WeeklyQuotaBlock {
+  used: number;
+  limit: number;
+  bonus: number;
+  period: QuotaPeriod;
+  period_start: string;
+  reset_at: string;
+}
+
+/**
+ * `GET /api/admin/users/{id}/usage` (TECH.md §8, §9): "همان دادهٔ «مصرف من»
+ * او، فقط متادیتا". NOT a flat superset of `UsageMeResponse` — nests
+ * `weekly`/`five_hour` blocks (confirmed against Dev1's in-progress
+ * `schemas.py#AdminUserUsageResponse`). The admin drill-down page
+ * (`AdminUserUsagePage.tsx`) maps this onto `UsageReport`'s flat props so it
+ * still visually mirrors `/usage` as §9 asks. NOT yet in openapi.json — see
+ * the file-header note.
+ */
+export interface AdminUserUsageResponseWire {
+  user_id: number;
+  username: string;
+  by_model: UsageByModelWire[];
+  by_key: UsageByKeyWire[];
+  daily: UsageDailyPointWire[];
+  weekly: WeeklyQuotaBlockWire;
+  five_hour: FiveHourUsageWire;
+}
+
+export interface AdminUserUsageResponse {
+  user_id: number;
+  username: string;
+  by_model: UsageByModel[];
+  by_key: UsageByKey[];
+  daily: UsageDailyPoint[];
+  weekly: WeeklyQuotaBlock;
+  /** null when no 5h cap is set — same "hide the bar" convention as `UsageMeResponse.fiveHour`. */
+  fiveHour: FiveHourUsage | null;
+}
+
+/** `GET /api/admin/users/{id}/usage` query — §8 mentions `?since=`. */
+export interface AdminUserUsageQuery {
+  since?: string;
+}
+
 export interface AuditLogEntry {
   id: number;
   actor_id: number | null;
@@ -483,6 +605,62 @@ export interface SetApiKeyRequest {
 
 export interface SetModeRequest {
   mode: UpstreamMode;
+}
+
+// ---------- admin: upstream account limits (اصلاحیهٔ ۳ / Issue F) ----------
+
+/**
+ * One window of `GET /api/admin/upstream/account-limits` (TECH.md §4.5, §8).
+ * Field names confirmed against Dev1's in-progress
+ * `services/account_limits.py#get_account_limits_view` — note it's `key`
+ * (not `window`) and `reset` (not `reset_at`), which reads slightly
+ * differently from §4.5's prose sketch. `limit`/`remaining` are in whatever
+ * unit the upstream's `anthropic-ratelimit-*` headers report
+ * (tokens/requests/credits — see `unit`), NOT necessarily EcoCode credits,
+ * so `NumericString` (not `DecimalString`) is used defensively — the parser
+ * (endpoints.ts) accepts either a number or a decimal-string on the wire
+ * (the DB column is `NUMERIC`, which the JSON encoder may or may not stringify).
+ */
+export type NumericString = string | number;
+
+export interface AccountLimitWindowWire {
+  key: string; // '5h' | 'weekly' | 'unified' | ... (defensive: not a closed enum, §4.5)
+  limit: NumericString | null;
+  remaining: NumericString | null;
+  reset: string | null;
+  unit: string | null;
+  last_updated: string;
+  stale: boolean;
+}
+
+export interface AccountLimitWindow {
+  key: string;
+  limit: number | null;
+  remaining: number | null;
+  reset: string | null;
+  unit: string | null;
+  last_updated: string;
+  stale: boolean;
+}
+
+/**
+ * §4.5/§8: "اگر آپ‌استریم هدری نداده → available:false + tier/subscription از
+ * credentials". When `available` is false, `windows` is expected empty and
+ * the UI must show the honest "سرویس بالادستی این اطلاعات را ارائه نمی‌کند"
+ * message + tier/subscription instead of fabricating zeros.
+ */
+export interface AccountLimitsResponseWire {
+  available: boolean;
+  windows: AccountLimitWindowWire[];
+  tier: string | null;
+  subscription: string | null;
+}
+
+export interface AccountLimitsResponse {
+  available: boolean;
+  windows: AccountLimitWindow[];
+  tier: string | null;
+  subscription: string | null;
 }
 
 // ---------- health ----------

@@ -16,6 +16,7 @@ const UsagePage = lazy(() => import('@/pages/UsagePage'));
 const KeysPage = lazy(() => import('@/pages/KeysPage'));
 const HelpPage = lazy(() => import('@/pages/HelpPage'));
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'));
+const AdminUserUsagePage = lazy(() => import('@/pages/admin/AdminUserUsagePage'));
 const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'));
 const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
 const AdminModelsPage = lazy(() => import('@/pages/admin/AdminModelsPage'));
@@ -61,6 +62,7 @@ export default function App() {
 
             <Route element={<RequireAdmin />}>
               <Route path="/admin/users" element={<AdminUsersPage />} />
+              <Route path="/admin/users/:userId/usage" element={<AdminUserUsagePage />} />
               <Route path="/admin/policies" element={<AdminPoliciesPage />} />
               <Route path="/admin/usage" element={<AdminUsagePage />} />
               <Route path="/admin/models" element={<AdminModelsPage />} />

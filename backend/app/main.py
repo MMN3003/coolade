@@ -29,6 +29,7 @@ from app.routers import (
 )
 from app.scheduler import start_scheduler
 from app.seed import run_seed
+from app.services import account_limits
 from app.services.turns import mark_interrupted_streaming_as_failed
 from app.upstream import credentials as cli_credentials
 
@@ -51,6 +52,13 @@ async def lifespan(app: FastAPI):
     await cli_credentials.startup_rehydrate()
     _background_tasks.append(asyncio.create_task(cli_credentials.periodic_task(60)))
 
+    # اصلاحیهٔ ۳ / Issue F: optional periodic probe to refresh upstream_account_limits
+    # when passthrough traffic has gone quiet — off by default (TECH.md 4.5).
+    if settings.upstream_limit_probe_enabled:
+        _background_tasks.append(
+            asyncio.create_task(account_limits.periodic_probe_task(settings.upstream_limit_probe_interval))
+        )
+
     scheduler = start_scheduler()
 
     yield
@@ -60,7 +68,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="EcoCode Gateway", version="1.2.0", lifespan=lifespan)
+app = FastAPI(title="EcoCode Gateway", version="1.3.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 if origins:

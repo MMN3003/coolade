@@ -9,8 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.deps import client_ip, get_db, require_admin
 from app.models import Setting, User
-from app.schemas import ApiKeySetRequest, ModeSetRequest, UpstreamStatusOut
+from app.schemas import AccountLimitsOut, ApiKeySetRequest, ModeSetRequest, UpstreamStatusOut
 from app.security import encrypt_secret
+from app.services import account_limits
 from app.services.audit import record_audit
 from app.upstream import credentials as cli_credentials
 
@@ -83,6 +84,19 @@ async def set_apikey(
     await record_audit(db, actor_id=admin.id, action="upstream.apikey_set", ip_address=ip)
     await db.commit()
     return {"ok": True}
+
+
+@router.get("/account-limits", response_model=AccountLimitsOut)
+async def upstream_account_limits(
+    admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
+) -> AccountLimitsOut:
+    """اصلاحیهٔ ۳ / Issue F (TECH.md 4.5, 8): honest view of the upstream account's own
+    rate-limit windows — populated only from headers actually seen on the
+    passthrough path (+ optional probe). No fabricated numbers: if nothing has ever
+    been captured, `available=false` and only tier/subscription from the
+    credentials file (if present) are shown."""
+    view = await account_limits.get_account_limits_view(db)
+    return AccountLimitsOut(**view)
 
 
 @router.put("/mode")

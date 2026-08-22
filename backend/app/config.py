@@ -20,6 +20,13 @@ class Settings(BaseSettings):
     # --- thinking level (Issue D, TECH.md 5.7) ---
     thinking_max_level: str = "deep"  # global cap: off | standard | deep
 
+    # --- اصلاحیهٔ ۳ / Issue E: rolling 5h window ---
+    rolling_window_hours: float = 5.0
+
+    # --- اصلاحیهٔ ۳ / Issue F: optional periodic upstream-limit probe ---
+    upstream_limit_probe_enabled: bool = False
+    upstream_limit_probe_interval: int = 900
+
     ecocode_secret_key: str = "0" * 44  # Fernet key (base64, 32 bytes) - override in prod
     session_secret: str = "dev-insecure-session-secret-change-me"
 

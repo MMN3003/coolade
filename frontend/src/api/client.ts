@@ -16,12 +16,22 @@ import type { ApiErrorBody } from './types';
 export class ApiError extends Error {
   code: string;
   status: number;
+  /**
+   * اصلاحیهٔ ۳ / Issue E (TECH.md §5.8, §8): populated for `quota_exceeded` /
+   * `quota_exceeded_5h` 429s so the UI can show "تا آزاد شدن پنجره صبر
+   * کنید" with an actual time. See `types.ts#ApiErrorBody` for the
+   * top-vs-nested assumption this reconciles once openapi.json lands.
+   */
+  resetAt: string | null;
+  reset5hAt: string | null;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, resetAt: string | null = null, reset5hAt: string | null = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.resetAt = resetAt;
+    this.reset5hAt = reset5hAt;
   }
 }
 
@@ -37,16 +47,24 @@ const DEFAULT_ERROR_MESSAGE = 'خطای غیرمنتظره‌ای رخ داد. �
 async function parseErrorBody(res: Response): Promise<ApiError> {
   let code = 'unknown_error';
   let message = DEFAULT_ERROR_MESSAGE;
+  let resetAt: string | null = null;
+  let reset5hAt: string | null = null;
   try {
-    const body = (await res.json()) as ApiErrorBody;
+    const body = (await res.json()) as ApiErrorBody & {
+      error?: { code: string; message: string; reset_at?: string | null; reset_5h_at?: string | null };
+    };
     if (body?.error?.message) message = body.error.message;
     if (body?.error?.code) code = body.error.code;
+    // اصلاحیهٔ ۳ / Issue E: confirmed nested inside `error` (AppError.extra,
+    // see types.ts's file-header note) — top-level checked too, defensively.
+    resetAt = body?.error?.reset_at ?? body?.reset_at ?? null;
+    reset5hAt = body?.error?.reset_5h_at ?? body?.reset_5h_at ?? null;
   } catch {
     // body wasn't JSON (e.g. proxy/nginx error page) — keep defaults
     if (res.status === 404) message = 'یافت نشد.';
     if (res.status >= 500) message = 'خطای سرور. لطفاً بعداً دوباره تلاش کنید.';
   }
-  return new ApiError(res.status, code, message);
+  return new ApiError(res.status, code, message, resetAt, reset5hAt);
 }
 
 interface RequestOptions {

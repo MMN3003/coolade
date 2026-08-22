@@ -88,6 +88,8 @@
     "attachmentsCount": "{{count}} پیوست",
     "removeAttachment": "حذف پیوست",
     "chatBusy": "پاسخ قبلی در جریان است. لطفاً تا پایان آن صبر کنید.",
+    "quotaExceeded5h": "سقف مصرف ۵ ساعتهٔ شما پر شده؛ تا آزاد شدن پنجره صبر کنید.",
+    "quotaExceeded5hWithReset": "سقف مصرف ۵ ساعتهٔ شما پر شده؛ تا آزاد شدن پنجره صبر کنید. آزاد شدن حدود {{time}}.",
     "toolWorking": "در حال کار با ابزار {{name}}…",
     "toolWrite": "در حال ساخت فایل…",
     "toolEdit": "در حال ویرایش فایل…",
@@ -120,7 +122,10 @@
     "credits": "امتیاز",
     "period_daily": "روزانه",
     "period_weekly": "هفتگی",
-    "period_monthly": "ماهانه"
+    "period_monthly": "ماهانه",
+    "fiveHourTitle": "۵ ساعتهٔ اخیر",
+    "fiveHourResetsAround": "آزاد شدن حدود {{time}}",
+    "periodResetsAt": "پایان دورهٔ جاری: {{time}}"
   },
   "keys": {
     "title": "کلیدهای API من",
@@ -156,13 +161,21 @@
       "deactivate": "غیرفعال‌سازی",
       "deleteConfirmTitle": "حذف کاربر",
       "deleteConfirmBody": "این کاربر و همهٔ کلیدهای او حذف/باطل شوند؟",
-      "editPolicyQuota": "سیاست و سهمیه"
+      "editPolicyQuota": "سیاست و سهمیه",
+      "usageReport": "گزارش مصرف"
+    },
+    "userUsage": {
+      "title": "گزارش مصرف کاربر",
+      "back": "بازگشت به فهرست کاربران",
+      "notice": "این گزارش فقط شامل متادیتای مصرف (توکن، امتیاز، مدل، کلید، زمان) است؛ هرگز محتوای چت کاربر نمایش داده نمی‌شود."
     },
     "policies": {
       "title": "سیاست‌ها و سهمیه",
       "allowedModels": "مدل‌های مجاز",
       "quotaPeriod": "دورهٔ سهمیه",
       "quotaLimit": "سقف مصرف (امتیاز)",
+      "quotaLimit5h": "سقف ۵ ساعته (امتیاز)",
+      "quotaLimit5hHint": "خالی = بدون سقف ۵ساعته (نامحدود)",
       "bonusCredits": "افزایش موقت سهمیه",
       "addBonus": "افزودن سهمیهٔ موقت",
       "selectUser": "انتخاب کاربر"
@@ -172,7 +185,15 @@
       "totalCredits": "مجموع امتیاز مصرفی",
       "userRanking": "رتبه‌بندی کاربران",
       "byModel": "تفکیک به ازای مدل",
-      "dailyTrend": "روند روزانه"
+      "dailyTrend": "روند روزانه",
+      "viewReport": "گزارش مصرف",
+      "accountLimitsTitle": "محدودیت اکانت اصلی",
+      "accountLimitsUnavailable": "این اطلاعات را سرویس بالادستی ارائه نمی‌دهد.",
+      "tier": "سطح اشتراک",
+      "subscription": "نوع اشتراک",
+      "stale": "قدیمی",
+      "resetAt": "آزاد شدن: {{time}}",
+      "lastUpdated": "آخرین به‌روزرسانی {{time}}"
     },
     "models": {
       "title": "مدل‌ها و وزن‌ها",
@@ -229,6 +250,7 @@
   },
   "errors": {
     "quota_exceeded": "سقف مصرف دورهٔ جاری شما تمام شده است.",
+    "quota_exceeded_5h": "سقف مصرف ۵ ساعتهٔ شما پر شده؛ تا آزاد شدن پنجره صبر کنید.",
     "model_not_allowed": "این مدل برای شما مجاز نیست.",
     "unauthorized": "نشست شما معتبر نیست. دوباره وارد شوید.",
     "forbidden": "شما دسترسی لازم برای این عملیات را ندارید.",

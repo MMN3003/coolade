@@ -136,6 +136,10 @@ class MyUsageResponse(BaseModel):
     by_model: list[UsageByModel]
     by_key: list[UsageByKey]
     daily: list[UsageDailyPoint]
+    # اصلاحیهٔ ۳ / Issue E — rolling 5h block, alongside the weekly one above.
+    used_5h: Decimal
+    limit_credits_5h: Decimal | None = None
+    reset_5h_at: datetime.datetime | None = None
 
 
 class UserUsageRow(BaseModel):
@@ -149,6 +153,36 @@ class AdminUsageResponse(BaseModel):
     by_user: list[UserUsageRow]
     by_model: list[UsageByModel]
     daily: list[UsageDailyPoint]
+
+
+# ---------- Admin: per-user usage report (اصلاحیهٔ ۳ / Issue G) ----------
+class WeeklyQuotaBlock(BaseModel):
+    used: Decimal
+    limit: Decimal
+    bonus: Decimal
+    period: str
+    period_start: datetime.datetime
+    reset_at: datetime.datetime
+
+
+class FiveHourQuotaBlock(BaseModel):
+    used_5h: Decimal
+    limit_credits_5h: Decimal | None = None
+    reset_5h_at: datetime.datetime | None = None
+
+
+class AdminUserUsageResponse(BaseModel):
+    """GET /api/admin/users/{id}/usage — same shape as "مصرف من" (MyUsageResponse)
+    plus admin-only metadata, but reads ONLY usage_ledger/quotas — never
+    messages/conversations.title/attachments (TECH.md 11.1 privacy rule)."""
+
+    user_id: int
+    username: str
+    by_model: list[UsageByModel]
+    by_key: list[UsageByKey]
+    daily: list[UsageDailyPoint]
+    weekly: WeeklyQuotaBlock
+    five_hour: FiveHourQuotaBlock
 
 
 # ---------- Admin: users ----------
@@ -185,6 +219,8 @@ class QuotaOut(BaseModel):
     limit_credits: Decimal
     bonus_credits: Decimal
     period_start: datetime.datetime
+    # اصلاحیهٔ ۳ / Issue E
+    limit_credits_5h: Decimal | None = None
 
 
 class UserDetailOut(UserOut):
@@ -200,6 +236,8 @@ class PolicySetRequest(BaseModel):
 class QuotaSetRequest(BaseModel):
     period: Literal["daily", "weekly", "monthly"]
     limit_credits: Decimal
+    # اصلاحیهٔ ۳ / Issue E — NULL/absent/0 = unlimited (not enforced).
+    limit_credits_5h: Decimal | None = None
 
 
 class QuotaBonusRequest(BaseModel):
@@ -272,6 +310,24 @@ class UpstreamStatusOut(BaseModel):
     base_url: str
     last_synced: datetime.datetime | None = None
     last_checked: datetime.datetime
+
+
+# ---------- Admin: upstream account limits (اصلاحیهٔ ۳ / Issue F) ----------
+class AccountLimitWindow(BaseModel):
+    key: str
+    limit: Decimal | None = None
+    remaining: Decimal | None = None
+    reset: datetime.datetime | None = None
+    unit: str | None = None
+    last_updated: datetime.datetime
+    stale: bool
+
+
+class AccountLimitsOut(BaseModel):
+    available: bool
+    windows: list[AccountLimitWindow]
+    tier: str | None = None
+    subscription: str | None = None
 
 
 class ApiKeySetRequest(BaseModel):

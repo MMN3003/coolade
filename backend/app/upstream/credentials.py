@@ -103,6 +103,50 @@ def _parse_raw(raw: dict) -> dict | None:
     }
 
 
+_TIER_KEYS = {"ratelimittier", "rate_limit_tier", "ratelimit_tier"}
+_SUBSCRIPTION_KEYS = {"subscriptiontype", "subscription_type"}
+
+
+def _find_account_field(node: Any, wanted_keys: set[str], depth: int = 0) -> str | None:
+    """اصلاحیهٔ ۳ / Issue F honest fallback (TECH.md 4.5): Claude Code's credentials
+    file shape isn't part of any contract we control, so this searches a couple of
+    levels deep for a field that looks like a tier/subscription marker instead of
+    assuming one exact path. Returns None (never a fabricated placeholder) if
+    nothing matches — the caller shows an explicit "upstream doesn't disclose this"
+    state rather than inventing a number."""
+    if depth > 2 or not isinstance(node, dict):
+        return None
+    for key, value in node.items():
+        if key.lower().replace("-", "_") in wanted_keys and isinstance(value, str) and value:
+            return value
+    for value in node.values():
+        if isinstance(value, dict):
+            found = _find_account_field(value, wanted_keys, depth + 1)
+            if found:
+                return found
+    return None
+
+
+def read_account_info() -> dict[str, str | None] | None:
+    """Best-effort, honest extraction of rateLimitTier/subscriptionType from the
+    credentials file the CLI already trusts — used ONLY as the Issue F fallback
+    display when no anthropic-ratelimit-* header has ever been captured. Never
+    fabricates a value: missing fields come back as None."""
+    path = _container_creds_path()
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(raw, dict):
+        return None
+    return {
+        "rate_limit_tier": _find_account_field(raw, _TIER_KEYS),
+        "subscription_type": _find_account_field(raw, _SUBSCRIPTION_KEYS),
+    }
+
+
 def read_credentials() -> dict | None:
     """Read the container's own (claude_state-volume-backed) credentials file — the
     one the CLI subprocess actually uses."""

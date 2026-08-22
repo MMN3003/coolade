@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "EcoCode Gateway",
-    "version": "1.2.0"
+    "version": "1.3.0"
   },
   "paths": {
     "/api/health": {
@@ -1244,6 +1244,124 @@
         }
       }
     },
+    "/api/admin/users/{user_id}/usage": {
+      "get": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "User Usage Report",
+        "description": "اصلاحیهٔ ۳ / Issue G: same data as the user's own \"مصرف من\" — daily trend +\nby_model + by_key + current 5h/weekly blocks — just admin-facing metadata.\nNever touches messages/conversations.title/attachments (TECH.md 11.1).",
+        "operationId": "user_usage_report_api_admin_users__user_id__usage_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminUserUsageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{user_id}/usage/export.csv": {
+      "get": {
+        "tags": [
+          "admin-users"
+        ],
+        "summary": "Export User Usage Csv",
+        "description": "اصلاحیهٔ ۳ / Issue G (nice-to-have): single-user CSV, same columns as the\norg-wide /api/admin/usage/export.csv, filtered to this user.",
+        "operationId": "export_user_usage_csv_api_admin_users__user_id__usage_export_csv_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/models": {
       "get": {
         "tags": [
@@ -1646,6 +1764,28 @@
         }
       }
     },
+    "/api/admin/upstream/account-limits": {
+      "get": {
+        "tags": [
+          "admin-upstream"
+        ],
+        "summary": "Upstream Account Limits",
+        "description": "اصلاحیهٔ ۳ / Issue F (TECH.md 4.5, 8): honest view of the upstream account's own\nrate-limit windows — populated only from headers actually seen on the\npassthrough path (+ optional probe). No fabricated numbers: if nothing has ever\nbeen captured, `available=false` and only tier/subscription from the\ncredentials file (if present) are shown.",
+        "operationId": "upstream_account_limits_api_admin_upstream_account_limits_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountLimitsOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/upstream/mode": {
       "put": {
         "tags": [
@@ -1751,6 +1891,66 @@
         }
       }
     },
+    "/internal/upstream-limits": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Upstream Limits",
+        "operationId": "upstream_limits_internal_upstream_limits_post",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpstreamLimitsReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Upstream Limits Internal Upstream Limits Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/internal/upstream-config": {
       "get": {
         "tags": [
@@ -1803,6 +2003,118 @@
   },
   "components": {
     "schemas": {
+      "AccountLimitWindow": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "title": "Key"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "remaining": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remaining"
+          },
+          "reset": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "last_updated": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Last Updated"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale"
+          }
+        },
+        "type": "object",
+        "required": [
+          "key",
+          "last_updated",
+          "stale"
+        ],
+        "title": "AccountLimitWindow"
+      },
+      "AccountLimitsOut": {
+        "properties": {
+          "available": {
+            "type": "boolean",
+            "title": "Available"
+          },
+          "windows": {
+            "items": {
+              "$ref": "#/components/schemas/AccountLimitWindow"
+            },
+            "type": "array",
+            "title": "Windows"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tier"
+          },
+          "subscription": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription"
+          }
+        },
+        "type": "object",
+        "required": [
+          "available",
+          "windows"
+        ],
+        "title": "AccountLimitsOut"
+      },
       "AdminUsageResponse": {
         "properties": {
           "total_credits": {
@@ -1839,6 +2151,57 @@
           "daily"
         ],
         "title": "AdminUsageResponse"
+      },
+      "AdminUserUsageResponse": {
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "title": "User Id"
+          },
+          "username": {
+            "type": "string",
+            "title": "Username"
+          },
+          "by_model": {
+            "items": {
+              "$ref": "#/components/schemas/UsageByModel"
+            },
+            "type": "array",
+            "title": "By Model"
+          },
+          "by_key": {
+            "items": {
+              "$ref": "#/components/schemas/UsageByKey"
+            },
+            "type": "array",
+            "title": "By Key"
+          },
+          "daily": {
+            "items": {
+              "$ref": "#/components/schemas/UsageDailyPoint"
+            },
+            "type": "array",
+            "title": "Daily"
+          },
+          "weekly": {
+            "$ref": "#/components/schemas/WeeklyQuotaBlock"
+          },
+          "five_hour": {
+            "$ref": "#/components/schemas/FiveHourQuotaBlock"
+          }
+        },
+        "type": "object",
+        "required": [
+          "user_id",
+          "username",
+          "by_model",
+          "by_key",
+          "daily",
+          "weekly",
+          "five_hour"
+        ],
+        "title": "AdminUserUsageResponse",
+        "description": "GET /api/admin/users/{id}/usage — same shape as \"مصرف من\" (MyUsageResponse)\nplus admin-only metadata, but reads ONLY usage_ledger/quotas — never\nmessages/conversations.title/attachments (TECH.md 11.1 privacy rule)."
       },
       "ApiKeyCreate": {
         "properties": {
@@ -2252,6 +2615,42 @@
         },
         "type": "object",
         "title": "ConversationUpdate"
+      },
+      "FiveHourQuotaBlock": {
+        "properties": {
+          "used_5h": {
+            "type": "string",
+            "title": "Used 5H"
+          },
+          "limit_credits_5h": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Credits 5H"
+          },
+          "reset_5h_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset 5H At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used_5h"
+        ],
+        "title": "FiveHourQuotaBlock"
       },
       "HTTPValidationError": {
         "properties": {
@@ -2809,6 +3208,33 @@
             },
             "type": "array",
             "title": "Daily"
+          },
+          "used_5h": {
+            "type": "string",
+            "title": "Used 5H"
+          },
+          "limit_credits_5h": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Credits 5H"
+          },
+          "reset_5h_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset 5H At"
           }
         },
         "type": "object",
@@ -2820,7 +3246,8 @@
           "used_credits",
           "by_model",
           "by_key",
-          "daily"
+          "daily",
+          "used_5h"
         ],
         "title": "MyUsageResponse"
       },
@@ -2889,6 +3316,17 @@
             "type": "string",
             "format": "date-time",
             "title": "Period Start"
+          },
+          "limit_credits_5h": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Credits 5H"
           }
         },
         "type": "object",
@@ -2921,6 +3359,20 @@
               }
             ],
             "title": "Limit Credits"
+          },
+          "limit_credits_5h": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Credits 5H"
           }
         },
         "type": "object",
@@ -3035,6 +3487,39 @@
           "base_url"
         ],
         "title": "UpstreamConfigOut"
+      },
+      "UpstreamLimitsReport": {
+        "properties": {
+          "raw_headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Raw Headers"
+          },
+          "upstream_request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upstream Request Id"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "default": "passthrough"
+          }
+        },
+        "type": "object",
+        "required": [
+          "raw_headers"
+        ],
+        "title": "UpstreamLimitsReport",
+        "description": "اصلاحیهٔ ۳ / Issue F (TECH.md 4.5, 6.1): the litellm handler fire-and-forgets\nthe raw `anthropic-ratelimit-*` response headers here after every passthrough\ncall; parsing into window/limit/remaining/reset stays in backend (one place),\nnot in the handler (which remains a dumb relay)."
       },
       "UpstreamStatusOut": {
         "properties": {
@@ -3585,6 +4070,46 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "WeeklyQuotaBlock": {
+        "properties": {
+          "used": {
+            "type": "string",
+            "title": "Used"
+          },
+          "limit": {
+            "type": "string",
+            "title": "Limit"
+          },
+          "bonus": {
+            "type": "string",
+            "title": "Bonus"
+          },
+          "period": {
+            "type": "string",
+            "title": "Period"
+          },
+          "period_start": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Period Start"
+          },
+          "reset_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Reset At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "used",
+          "limit",
+          "bonus",
+          "period",
+          "period_start",
+          "reset_at"
+        ],
+        "title": "WeeklyQuotaBlock"
       },
       "WorkspaceFileOut": {
         "properties": {

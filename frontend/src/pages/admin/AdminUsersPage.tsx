@@ -26,6 +26,7 @@ import BlockIcon from '@mui/icons-material/BlockOutlined';
 import CheckCircleIcon from '@mui/icons-material/CheckCircleOutline';
 import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
+import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import { useTranslation } from 'react-i18next';
 import { adminUsersApi } from '@/api/endpoints';
 import type { AdminUser, AuthSource, CreateUserRequest, UserRole } from '@/api/types';
@@ -132,6 +133,12 @@ export default function AdminUsersPage() {
                       <Tooltip title={t('admin.users.editPolicyQuota')}>
                         <IconButton size="small" onClick={() => navigate(`/admin/policies?user=${u.id}`)}>
                           <TuneIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      {/* اصلاحیهٔ ۳ / Issue G */}
+                      <Tooltip title={t('admin.users.usageReport')}>
+                        <IconButton size="small" onClick={() => navigate(`/admin/users/${u.id}/usage`)}>
+                          <AssessmentOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title={u.is_active ? t('admin.users.deactivate') : t('admin.users.activate')}>

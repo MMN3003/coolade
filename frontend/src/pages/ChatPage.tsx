@@ -12,6 +12,7 @@ import { useConversationStream, type ConversationStreamCallbacks } from '@/hooks
 import type { AttachmentUploadResponse, Message, ThinkingLevel } from '@/api/types';
 import { useAuthStore } from '@/store/authStore';
 import { getErrorMessage } from '@/utils/errors';
+import { formatPersianDateTime } from '@/utils/date';
 import ConversationSidebar from '@/components/chat/ConversationSidebar';
 import ModelPicker from '@/components/chat/ModelPicker';
 import ThinkingLevelPicker from '@/components/chat/ThinkingLevelPicker';
@@ -81,6 +82,13 @@ export default function ChatPage() {
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentUploadResponse[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // اصلاحیهٔ ۳ / Issue E: when a send/retry hits the rolling 5h cap (§5.8),
+  // best-effort disable the send button until the window partially frees up
+  // (mirrors "retry button disabled until reset_5h_at" for the failed-bubble
+  // case — this rejection happens at the pre-check §5.1[۴], before any
+  // message row/retry-bubble exists, so there is no bubble to attach the
+  // disabled state to; the composer itself is the closest equivalent).
+  const [quota5hBlockedUntil, setQuota5hBlockedUntil] = useState<string | null>(null);
 
   const stream = useConversationStream();
   const justCreatedIdRef = useRef<number | null>(null);
@@ -126,11 +134,26 @@ export default function ChatPage() {
     setPendingAttachments([]);
     setSendError(null);
     setRetryPendingId(null);
+    setQuota5hBlockedUntil(null);
     autoAttachedForRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
 
   useEffect(() => () => stream.stop(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // اصلاحیهٔ ۳ / Issue E: auto-clear the composer lock once the rolling
+  // window has (at least partially) freed up, so the user isn't stuck
+  // disabled forever without touching anything.
+  useEffect(() => {
+    if (!quota5hBlockedUntil) return;
+    const ms = new Date(quota5hBlockedUntil).getTime() - Date.now();
+    if (ms <= 0) {
+      setQuota5hBlockedUntil(null);
+      return;
+    }
+    const timer = window.setTimeout(() => setQuota5hBlockedUntil(null), ms);
+    return () => window.clearTimeout(timer);
+  }, [quota5hBlockedUntil]);
 
   // Opening a conversation that's already generating: auto-attach and replay
   // from the start of the turn (TECH.md §9 — "انگار هیچ‌وقت قطع نشده").
@@ -152,6 +175,14 @@ export default function ChatPage() {
   const displayMessages = optimisticUserMessage ? [...canonicalMessages, optimisticUserMessage] : canonicalMessages;
 
   const isBusy = stream.state.assistantMessageId !== null;
+  const quota5hBlocked = !!quota5hBlockedUntil && new Date(quota5hBlockedUntil).getTime() > Date.now();
+
+  /** اصلاحیهٔ ۳ / Issue E (TECH.md §5.8): the distinct 5h-cap message, with the reset time appended if known. */
+  function describeQuota5hError(err: ApiError): string {
+    return err.reset5hAt
+      ? t('chat.quotaExceeded5hWithReset', { time: formatPersianDateTime(err.reset5hAt) })
+      : t('chat.quotaExceeded5h');
+  }
 
   async function ensureConversationId(): Promise<number | null> {
     if (conversationId) return conversationId;
@@ -215,6 +246,11 @@ export default function ChatPage() {
       setOptimisticUserMessage(null);
       if (err instanceof ApiError && err.code === 'chat_busy') {
         setSendError(t('chat.chatBusy'));
+      } else if (err instanceof ApiError && err.code === 'quota_exceeded_5h') {
+        // اصلاحیهٔ ۳ / Issue E: distinct copy from the weekly quota_exceeded
+        // message (§5.8) + best-effort composer lock until reset_5h_at.
+        setSendError(describeQuota5hError(err));
+        if (err.reset5hAt) setQuota5hBlockedUntil(err.reset5hAt);
       } else {
         setSendError(getErrorMessage(err, t('chat.streamError')));
       }
@@ -233,6 +269,9 @@ export default function ChatPage() {
         setSendError(t('chat.chatBusy'));
       } else if (err instanceof ApiError && err.code === 'not_retryable') {
         setSendError(t('chat.notRetryable'));
+      } else if (err instanceof ApiError && err.code === 'quota_exceeded_5h') {
+        setSendError(describeQuota5hError(err));
+        if (err.reset5hAt) setQuota5hBlockedUntil(err.reset5hAt);
       } else {
         setSendError(getErrorMessage(err));
       }
@@ -330,7 +369,7 @@ export default function ChatPage() {
         </Box>
 
         <MessageInput
-          disabled={noModelsAllowed || !selectedModelKey}
+          disabled={noModelsAllowed || !selectedModelKey || quota5hBlocked}
           sending={isBusy}
           uploading={uploading}
           pendingAttachments={pendingAttachments}

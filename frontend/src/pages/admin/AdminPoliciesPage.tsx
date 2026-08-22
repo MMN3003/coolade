@@ -38,6 +38,8 @@ export default function AdminPoliciesPage() {
   const [selectedModelKeys, setSelectedModelKeys] = useState<string[]>([]);
   const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('weekly');
   const [quotaLimit, setQuotaLimit] = useState<string>('0');
+  // اصلاحیهٔ ۳ / Issue E: empty string = no cap (NULL/۰ = نامحدود، TECH.md §3/§8).
+  const [quotaLimit5h, setQuotaLimit5h] = useState<string>('');
   const [bonusCredits, setBonusCredits] = useState<string>('0');
 
   useEffect(() => {
@@ -47,9 +49,13 @@ export default function AdminPoliciesPage() {
       if (userDetailQuery.data.quota) {
         setQuotaPeriod(userDetailQuery.data.quota.period);
         setQuotaLimit(String(userDetailQuery.data.quota.limit_credits));
+        setQuotaLimit5h(
+          userDetailQuery.data.quota.limit_credits_5h ? String(userDetailQuery.data.quota.limit_credits_5h) : '',
+        );
       } else {
         setQuotaPeriod('weekly');
         setQuotaLimit('0');
+        setQuotaLimit5h('');
       }
     }
   }, [userDetailQuery.data]);
@@ -61,7 +67,12 @@ export default function AdminPoliciesPage() {
 
   const quotaMutation = useMutation({
     mutationFn: () =>
-      adminPolicyApi.setQuota(selectedUserId!, { period: quotaPeriod, limit_credits: Number(quotaLimit) }),
+      adminPolicyApi.setQuota(selectedUserId!, {
+        period: quotaPeriod,
+        limit_credits: Number(quotaLimit),
+        // اصلاحیهٔ ۳ / Issue E: empty field → null (unlimited), not 0 by accident of Number('').
+        limit_credits_5h: quotaLimit5h.trim() === '' ? null : Number(quotaLimit5h),
+      }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'user', selectedUserId] }),
   });
 
@@ -165,6 +176,14 @@ export default function AdminPoliciesPage() {
                   type="number"
                   value={quotaLimit}
                   onChange={(e) => setQuotaLimit(e.target.value)}
+                />
+                <TextField
+                  label={t('admin.policies.quotaLimit5h')}
+                  type="number"
+                  value={quotaLimit5h}
+                  onChange={(e) => setQuotaLimit5h(e.target.value)}
+                  helperText={t('admin.policies.quotaLimit5hHint')}
+                  placeholder="∞"
                 />
                 {quotaMutation.isError && <Alert severity="error">{getErrorMessage(quotaMutation.error)}</Alert>}
                 <Button

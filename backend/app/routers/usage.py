@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import get_current_user, get_db
 from app.models import ApiKey, Model, User, UsageLedger
 from app.schemas import MyUsageResponse, UsageByKey, UsageByModel, UsageDailyPoint
-from app.services.quota import get_or_create_quota, get_used_credits
+from app.services.quota import get_5h_window_state, get_or_create_quota, get_used_credits
 
 router = APIRouter(prefix="/api/usage", tags=["usage"])
 
@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/usage", tags=["usage"])
 async def my_usage(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> MyUsageResponse:
     quota = await get_or_create_quota(db, user.id)
     used = await get_used_credits(db, user.id, quota.period_start)
+    used_5h, reset_5h_at = await get_5h_window_state(db, user.id)
 
     by_model_rows = await db.execute(
         select(Model.model_key, func.coalesce(func.sum(UsageLedger.credits), 0))
@@ -65,4 +66,7 @@ async def my_usage(user: User = Depends(get_current_user), db: AsyncSession = De
         by_model=by_model,
         by_key=by_key,
         daily=daily,
+        used_5h=used_5h,
+        limit_credits_5h=quota.limit_credits_5h,
+        reset_5h_at=reset_5h_at,
     )

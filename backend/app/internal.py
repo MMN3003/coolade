@@ -83,6 +83,31 @@ def pop_usage_report(request_id: str) -> dict[str, Any] | None:
     return _usage_reports.pop(request_id, None)
 
 
+class UpstreamLimitsReport(BaseModel):
+    """اصلاحیهٔ ۳ / Issue F (TECH.md 4.5, 6.1): the litellm handler fire-and-forgets
+    the raw `anthropic-ratelimit-*` response headers here after every passthrough
+    call; parsing into window/limit/remaining/reset stays in backend (one place),
+    not in the handler (which remains a dumb relay)."""
+
+    raw_headers: dict[str, str]
+    upstream_request_id: str | None = None
+    source: str = "passthrough"
+
+
+@router.post("/upstream-limits")
+async def upstream_limits(
+    body: UpstreamLimitsReport, authorization: str | None = Header(default=None)
+) -> dict[str, Any]:
+    _check_secret(authorization)
+    from app.services import account_limits
+
+    async with async_session_factory() as db:
+        parsed = await account_limits.record_raw_headers(
+            db, body.raw_headers, source=body.source, upstream_request_id=body.upstream_request_id
+        )
+    return {"ok": True, "windows_parsed": parsed}
+
+
 class UpstreamConfigOut(BaseModel):
     mode: str
     base_url: str

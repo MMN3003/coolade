@@ -1,5 +1,9 @@
 import { api } from './client';
 import type {
+  AccountLimitWindow,
+  AccountLimitWindowWire,
+  AccountLimitsResponse,
+  AccountLimitsResponseWire,
   AddQuotaBonusRequest,
   AdminModel,
   AdminModelWire,
@@ -10,6 +14,9 @@ import type {
   AdminUser,
   AdminUserDetail,
   AdminUserDetailWire,
+  AdminUserUsageResponse,
+  AdminUserUsageResponseWire,
+  AdminUserUsageQuery,
   ApiKeySummary,
   AttachmentUploadResponse,
   AuditLogEntry,
@@ -21,10 +28,13 @@ import type {
   CreateConversationRequest,
   CreateModelRequest,
   CreateUserRequest,
+  FiveHourUsage,
+  FiveHourUsageWire,
   HealthResponse,
   LoginRequest,
   MeResponse,
   MeResponseWire,
+  NumericString,
   OkResponse,
   QuotaSummary,
   QuotaSummaryWire,
@@ -53,6 +63,18 @@ function num(v: string | number | null | undefined): number {
   return Number.isNaN(n) ? 0 : n;
 }
 
+/**
+ * Like `num`, but preserves `null` — needed for fields where null is
+ * semantically distinct from 0 (اصلاحیهٔ ۳: `limit_credits_5h` null =
+ * "unlimited / no cap set", vs 0 which is treated the same by the UI but is
+ * a different wire value than "not configured").
+ */
+function numOrNull(v: NumericString | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isNaN(n) ? null : n;
+}
+
 function parseQuota(q: QuotaSummaryWire | null): QuotaSummary | null {
   if (!q) return null;
   return {
@@ -71,11 +93,23 @@ function parseAdminQuota(q: AdminQuotaWire | null): AdminQuota | null {
     limit_credits: num(q.limit_credits),
     bonus_credits: num(q.bonus_credits),
     period_start: q.period_start,
+    limit_credits_5h: numOrNull(q.limit_credits_5h),
   };
 }
 
 function parseMe(raw: MeResponseWire): MeResponse {
   return { ...raw, quota: parseQuota(raw.quota) };
+}
+
+/** اصلاحیهٔ ۳ / Issue E — null when the backend hasn't shipped the flat 5h fields yet, or no cap is set. */
+function parseFiveHour(raw: FiveHourUsageWire | Pick<UsageMeResponseWire, 'used_5h' | 'limit_credits_5h' | 'reset_5h_at'>): FiveHourUsage | null {
+  const limit = numOrNull(raw.limit_credits_5h);
+  if (!limit) return null; // NULL/0 = unlimited per TECH.md §3/§8 — hide the bar entirely
+  return {
+    used_5h: num(raw.used_5h),
+    limit_credits_5h: limit,
+    reset_5h_at: raw.reset_5h_at ?? null,
+  };
 }
 
 function parseUsageMe(raw: UsageMeResponseWire): UsageMeResponse {
@@ -88,6 +122,7 @@ function parseUsageMe(raw: UsageMeResponseWire): UsageMeResponse {
     by_model: raw.by_model.map((m) => ({ model_key: m.model_key, credits: num(m.credits) })),
     by_key: raw.by_key.map((k) => ({ api_key_id: k.api_key_id, name: k.name, credits: num(k.credits) })),
     daily: raw.daily.map((d) => ({ date: d.date, credits: num(d.credits) })),
+    fiveHour: parseFiveHour(raw),
   };
 }
 
@@ -106,6 +141,54 @@ function parseAdminUsage(raw: AdminUsageResponseWire): AdminUsageResponse {
     by_user: raw.by_user.map((u) => ({ user_id: u.user_id, username: u.username, credits: num(u.credits) })),
     by_model: raw.by_model.map((m) => ({ model_key: m.model_key, credits: num(m.credits) })),
     daily: raw.daily.map((d) => ({ date: d.date, credits: num(d.credits) })),
+  };
+}
+
+/**
+ * اصلاحیهٔ ۳ / Issue G — nested `weekly`/`five_hour` blocks (not a flat
+ * superset of UsageMeResponse, see types.ts's file-header note).
+ */
+function parseAdminUserUsage(raw: AdminUserUsageResponseWire): AdminUserUsageResponse {
+  const limit5h = numOrNull(raw.five_hour.limit_credits_5h);
+  return {
+    user_id: raw.user_id,
+    username: raw.username,
+    by_model: raw.by_model.map((m) => ({ model_key: m.model_key, credits: num(m.credits) })),
+    by_key: raw.by_key.map((k) => ({ api_key_id: k.api_key_id, name: k.name, credits: num(k.credits) })),
+    daily: raw.daily.map((d) => ({ date: d.date, credits: num(d.credits) })),
+    weekly: {
+      used: num(raw.weekly.used),
+      limit: num(raw.weekly.limit),
+      bonus: num(raw.weekly.bonus),
+      period: raw.weekly.period,
+      period_start: raw.weekly.period_start,
+      reset_at: raw.weekly.reset_at,
+    },
+    fiveHour: limit5h
+      ? { used_5h: num(raw.five_hour.used_5h), limit_credits_5h: limit5h, reset_5h_at: raw.five_hour.reset_5h_at }
+      : null,
+  };
+}
+
+/** اصلاحیهٔ ۳ / Issue F — never fabricates numbers; passes `available:false` straight through. */
+function parseAccountLimitWindow(raw: AccountLimitWindowWire): AccountLimitWindow {
+  return {
+    key: raw.key,
+    limit: numOrNull(raw.limit),
+    remaining: numOrNull(raw.remaining),
+    reset: raw.reset,
+    unit: raw.unit,
+    last_updated: raw.last_updated,
+    stale: raw.stale,
+  };
+}
+
+function parseAccountLimits(raw: AccountLimitsResponseWire): AccountLimitsResponse {
+  return {
+    available: raw.available,
+    windows: (raw.windows ?? []).map(parseAccountLimitWindow),
+    tier: raw.tier,
+    subscription: raw.subscription,
   };
 }
 
@@ -192,6 +275,15 @@ export const adminUsersApi = {
   },
   update: (id: number, body: UpdateUserRequest) => api.patch<AdminUser>(`/api/admin/users/${id}`, body),
   remove: (id: number) => api.delete<Record<string, unknown>>(`/api/admin/users/${id}`),
+  /**
+   * اصلاحیهٔ ۳ / Issue G (TECH.md §8, §9): per-user drill-down — "همان دادهٔ
+   * «مصرف من» او، فقط متادیتا". Not yet in openapi.json; will 404 until Dev1
+   * ships it (§10) — see `pages/admin/AdminUserUsagePage.tsx`.
+   */
+  usage: async (id: number, query?: AdminUserUsageQuery): Promise<AdminUserUsageResponse> =>
+    parseAdminUserUsage(await api.get<AdminUserUsageResponseWire>(`/api/admin/users/${id}/usage`, { ...query })),
+  /** اصلاحیهٔ ۳ / Issue G, "nice": single-user CSV export. */
+  usageExportCsvUrl: (id: number) => `/api/admin/users/${id}/usage/export.csv`,
 };
 
 // ---------- admin: policy & quota ----------
@@ -228,6 +320,13 @@ export const adminUpstreamApi = {
   status: () => api.get<UpstreamStatus>('/api/admin/upstream/status'),
   setApiKey: (body: SetApiKeyRequest) => api.put<Record<string, unknown>>('/api/admin/upstream/apikey', body),
   setMode: (body: SetModeRequest) => api.put<Record<string, unknown>>('/api/admin/upstream/mode', body),
+  /**
+   * اصلاحیهٔ ۳ / Issue F (TECH.md §4.5, §8): "لیمیت خود اکانت آپ‌استریم".
+   * Not yet in openapi.json; will 404 until Dev1 ships it (§10) — see
+   * `pages/admin/AdminUsagePage.tsx`'s account-limits card.
+   */
+  accountLimits: async (): Promise<AccountLimitsResponse> =>
+    parseAccountLimits(await api.get<AccountLimitsResponseWire>('/api/admin/upstream/account-limits')),
 };
 
 // ---------- health ----------
