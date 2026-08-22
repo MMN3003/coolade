@@ -3,11 +3,18 @@
 | | |
 |---|---|
 | **نام محصول** | EcoCode Gateway |
-| **نسخه سند** | 1.2 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۲) |
+| **نسخه سند** | 1.3 — طراحی فنی برای پیاده‌سازی (اصلاحیهٔ ۳؛ E/F/G فقط طراحی) |
 | **تاریخ** | 2026-08-22 |
 | **مدیر فنی** | Opus (Tech Lead) |
 | **مبنا** | `docs/PRD.md` v0.2 (§1 توضیح آپ‌استریم، F1.0، F4.6، R1 منتفی) |
 | **مخاطب** | دو توسعه‌دهندهٔ Sonnet (Dev1: infra+backend، Dev2: frontend) |
+
+> **اصلاحیهٔ ۳ (2026-08-22، سه درخواست کاربر — فقط طراحی):**
+> ⚠️ **این اصلاحیه هنوز پیاده نمی‌شود.** Dev1/Dev2 وسط پیاده‌سازی اصلاحیهٔ ۲ (A/B/C/D) هستند. migration و کدِ اصلاحیهٔ ۳ باید **روی** اسکیمای اصلاحیهٔ ۲ سوار شود (revision متوالی Alembic، بعد از merge و integration اصلاحیهٔ ۲). بخش‌های این اصلاحیه با تگ «اصلاحیهٔ ۳» مشخص شده‌اند.
+> ۱) **Issue E — سقف غلتان ۵ ساعته به ازای هر کاربر (علاوه بر سهمیهٔ هفتگی؛ هر دو هم‌زمان enforce):** پنجرهٔ rolling `[now-5h, now]` روی `usage_ledger` (بدون reset period)، سقف per-user در ستون جدید `quotas.limit_credits_5h` (NULL/0 = نامحدود)، طول پنجره از env (`ROLLING_WINDOW_HOURS`, پیش‌فرض ۵). `check_quota` هر دو سطح (چت وب + passthrough) را با کد مجزا `quota_exceeded_5h` رد می‌کند + زمان آزاد شدن پنجره.
+> ۲) **Issue F — نمایش لیمیت خود اکانت اصلی در ادمین:** capture هدرهای `anthropic-ratelimit-*` از پاسخ آپ‌استریم در مسیر passthrough (خام + parseشده) → side-channel `/internal/upstream-limits` → state store؛ داشبورد ادمین «مصرف/باقی‌مانده/reset» هر پنجرهٔ اکانت را نشان می‌دهد. مسیر CLI هدر نمی‌دهد → طراحی صادقانه: state از ترافیک passthrough (+ probe اختیاری) تازه می‌شود، `last_updated` نمایش داده می‌شود، عدد جعلی ساخته نمی‌شود؛ در نبود هدر → فقط `rateLimitTier/subscriptionType` از credentials.
+> ۳) **Issue G — گزارش مصرف per-user در ادمین:** endpoint جدید `GET /api/admin/users/{id}/usage` (روند روزانه + by_model + by_key + ۵ساعته و هفتگی جاری) + CSV تک‌کاربر (nice)، و صفحهٔ drill-down ادمین (همان «مصرف من» کاربر، فقط متادیتا).
+> ۴) تقسیم کار اصلاحیهٔ ۳ در انتهای §۱۰ (اجرا پس از integration اصلاحیهٔ ۲).
 
 > **اصلاحیهٔ ۲ (2026-08-22، دو مسئلهٔ production):**
 > ۱) **Issue A — بقای نوبت چت مستقل از مرورگر (§۵.۱، §۵.۳، §۸، §۹، §۳):** اجرای CLI دیگر به درخواست SSE کوپل نیست. `POST messages` نوبت را می‌پذیرد (**202**) و یک task پس‌زمینهٔ asyncio آن را تا انتها اجرا و **همیشه** persist می‌کند؛ استریم همیشه از endpoint جدید `GET /api/conversations/{id}/stream` مصرف می‌شود که رویدادهای بافرشدهٔ نوبتِ در جریان را **از ابتدا replay** و سپس live دنبال می‌کند (ring buffer در حافظه + registry تک‌پروسه‌ای؛ بدون redis/celery). ردیف پیام دستیار از ابتدا با `status='streaming'` ساخته می‌شود (`complete`/`failed` در پایان)؛ در استارتاپ backend ردیف‌های `streaming` مانده → `failed` (هشدار restart). لیست گفتگوها فلگ `generating` می‌دهد (اسپینر سایدبار).
@@ -156,6 +163,10 @@ CLI_MAX_CONCURRENCY=4                 # سقف پروسه‌های هم‌زما
 CLI_TIMEOUT_SECONDS=300               # حداکثر عمر یک اجرای CLI به ازای هر پیام
 MOCK_CLI=0                            # 1 → runner به‌جای claude، /app/bin/mock-claude را اجرا می‌کند
 THINKING_MAX_LEVEL=deep               # سقف سراسری سطح تفکر (Issue D): off | standard | deep
+# --- اصلاحیهٔ ۳ ---
+ROLLING_WINDOW_HOURS=5                 # طول پنجرهٔ غلتان سقف ۵ساعته (Issue E)
+UPSTREAM_LIMIT_PROBE_ENABLED=false    # probe دوره‌ای سبک برای تازه‌کردن لیمیت اکانت (Issue F)
+UPSTREAM_LIMIT_PROBE_INTERVAL=900     # ثانیه؛ فقط اگر probe فعال باشد
 
 # --- رمزنگاری ---
 ECOCODE_SECRET_KEY=<32-byte base64>   # کلید Fernet برای رمز کردن کلید apikey آپ‌استریم
@@ -271,9 +282,14 @@ CREATE TABLE quotas (
     limit_credits   NUMERIC(14,2) NOT NULL,            -- سقف امتیاز مصرف در دوره
     period_start    TIMESTAMPTZ NOT NULL DEFAULT now(),-- شروع دورهٔ جاری؛ هفتگی = شنبه ۰۰:۰۰ محلی
     bonus_credits   NUMERIC(14,2) NOT NULL DEFAULT 0,  -- افزایش موقت ادمین (F3.4) تا پایان دوره
+    -- اصلاحیهٔ ۳ / Issue E: سقف پنجرهٔ غلتان ۵ساعته. NULL = نامحدود (بدون enforce).
+    -- migration اصلاحیهٔ ۳ این ستون را ADD می‌کند (روی اسکیمای اصلاحیهٔ ۲).
+    limit_credits_5h NUMERIC(14,2),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_quota_user UNIQUE (user_id)
 );
+-- توجه: سقف ۵ساعته «پنجرهٔ غلتان» است، نه دوره‌ای — period_start/bonus بی‌ربط‌اند؛
+-- مصرف لحظه‌ای = SUM(usage_ledger.credits) روی [now - ROLLING_WINDOW_HOURS, now] (Issue E، §۵.۱).
 
 -- ============ usage_ledger ============
 -- منبع authoritative مصرف. یک ردیف به ازای هر درخواست موفق (post-response).
@@ -394,6 +410,24 @@ CREATE TABLE settings (
 --   upstream.cli.host_seed_hash      = sha256 آخرین فایل هاستِ importشده (سیاست seed در §۴.۱)
 --   upstream.cli.last_refresh        = JSON: {at, ok, error?}
 --   quota.warn_threshold             = '0.8'  (هشدار ۸۰٪)
+
+-- ============ upstream_account_limits (اصلاحیهٔ ۳ / Issue F) ============
+-- state لیمیتِ خودِ اکانت آپ‌استریم، استخراج‌شده از هدرهای پاسخ آپ‌استریم.
+-- یک ردیف به ازای هر «پنجره‌ای» که آپ‌استریم افشا می‌کند (مثلا '5h', 'weekly',
+-- 'unified'). فقط state است (نه سری‌زمانی)؛ upsert روی window_key.
+CREATE TABLE upstream_account_limits (
+    window_key      VARCHAR(40) PRIMARY KEY,  -- '5h' | 'weekly' | 'unified' | 'tier' ...
+    limit_value     NUMERIC(18,2),            -- سقف (اگر افشا شود؛ واحد = واحد آپ‌استریم)
+    remaining_value NUMERIC(18,2),            -- باقی‌مانده
+    reset_at        TIMESTAMPTZ,              -- زمان reset پنجره (از هدر reset)
+    unit            VARCHAR(30),              -- 'tokens' | 'requests' | 'credits' ... اگر معلوم
+    raw_headers     JSONB,                    -- همهٔ هدرهای anthropic-ratelimit-* خام (دفاعی)
+    source          VARCHAR(20) NOT NULL,     -- 'passthrough' | 'probe'
+    last_updated    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    upstream_request_id VARCHAR(100)          -- برای trace
+);
+-- اگر آپ‌استریم هیچ هدری ندهد، این جدول خالی می‌ماند و ادمین فقط
+-- rateLimitTier/subscriptionType از credentials را می‌بیند (طراحی صادقانهٔ §۴.۵).
 ```
 
 **نکات طراحی:**
@@ -486,6 +520,28 @@ LiteLLM handler درخواست را به شکل Messages API به `POST $UPSTREA
 - body: شکل Messages API (system, messages, max_tokens, stream, …). سرویس آپ‌استریم Claude-سازگار است، پس همین کافی است.
 - `HTTPS_PROXY` از env رعایت می‌شود.
 
+### ۴.۵ capture لیمیت خودِ اکانت آپ‌استریم (اصلاحیهٔ ۳ / Issue F — طراحی)
+
+هدف کاربر: «لیمیت خود اکانت اصلی رو ببینم چقدر مصرف شده و چقدر مونده». اکانت Max آپ‌استریم پنجره‌های نرخ خودش (۵ساعته/هفتگی) را دارد؛ ما فقط چیزی را نشان می‌دهیم که آپ‌استریم **واقعاً افشا** می‌کند — هیچ عددی ساخته نمی‌شود.
+
+**منبع داده — هدرهای پاسخ (مسیر passthrough):** litellm handler به هر پاسخ آپ‌استریم دسترسی به response headers دارد. خانوادهٔ مورد انتظار `anthropic-ratelimit-*` (دفاعی نسبت به نام دقیق — سرویس ثالث ممکن است متفاوت باشد):
+- `anthropic-ratelimit-unified-*` / `anthropic-ratelimit-*-limit` / `-remaining` / `-reset` و هر واریانت `-5h-` / `-weekly-`.
+- **راهبرد capture:** handler **همهٔ** هدرهایی که با `anthropic-ratelimit` شروع می‌شوند را خام برمی‌دارد (بدون فرض نام) و به side-channel می‌فرستد؛ parse به window/limit/remaining/reset در backend انجام می‌شود تا منطق در یک جا (نه در relay گنگ) بماند.
+
+**side-channel (توسعهٔ `/internal`):** endpoint داخلی جدید `POST /internal/upstream-limits` (bearer = master key، فقط شبکهٔ داخلی):
+```json
+{ "raw_headers": { "anthropic-ratelimit-unified-limit": "...", ... },
+  "upstream_request_id": "msg_...", "source": "passthrough" }
+```
+backend parse می‌کند و در `upstream_account_limits` (به ازای هر window_key) **upsert** می‌کند + `last_updated=now`. handler این را در همان مسیر گزارش usage (بعد از خواندن پاسخ) صدا می‌زند؛ شکست آن هرگز درخواست کاربر را نمی‌شکند (fire-and-forget).
+
+**مسیر CLI (چت وب) — طراحی صادقانه:** رویداد `result` خروجی stream-json و سایر خروجی‌های `claude -p` لیمیت سطح‌اکانت را **نمی‌دهند** (فقط usageِ همان نوبت). بنابراین:
+- state لیمیت اکانت **فقط از ترافیک passthrough** تازه می‌شود (و در صورت `UPSTREAM_LIMIT_PROBE_ENABLED=true`، از یک probe سبک دوره‌ای: یک درخواست کوچک `max_tokens=1` به `/v1/messages` صرفاً برای خواندن هدرها — با هزینهٔ توکن ناچیز که در ledger «اکانت» ثبت نمی‌شود چون کاربر نیست؛ پیش‌فرض خاموش).
+- اگر مدتی هیچ ترافیک passthrough نبوده، ارقام کهنه‌اند → UI حتماً `last_updated` را نشان می‌دهد و اگر از آستانه‌ای (مثلاً > ۱۵ دقیقه) گذشت، برچسب «ممکن است به‌روز نباشد».
+- **degrade کامل:** اگر سرویس ثالث اصلاً چنین هدری ندهد، `upstream_account_limits` خالی می‌ماند؛ ادمین فقط `rateLimitTier`/`subscriptionType` استخراج‌شده از فایل credentials را می‌بیند و پیام صریح «سرویس بالادستی جزئیات مصرف اکانت را ارائه نمی‌دهد».
+
+**نمایش:** `GET /api/admin/upstream/account-limits` (§۸) خروجی می‌دهد: لیست پنجره‌ها `[{window, limit, remaining, reset_at, unit, last_updated, stale}]` + `tier`/`subscription` (اگر معلوم) + `available: bool`.
+
 ---
 
 ## ۵. جریان درخواست هر دو سطح (auth · ACL · quota · ثبت مصرف · streaming)
@@ -504,7 +560,12 @@ Browser ──(session cookie)──▶ POST /api/conversations/{id}/messages   
  [۱ AUTH]   session cookie → user. نامعتبر/غیرفعال → 401.
  [۲ BUSY]   نوبت فعال برای همین گفتگو در registry؟ → 409 chat_busy.
  [۳ ACL ]   مدل گفتگو در model_policies[user]؟ نه → 403 «مدل مجاز نیست».
- [۴ QUOTA pre-check]  used>=budget → 429 + پیام فارسی + audit: request.denied_quota.
+ [۴ QUOTA pre-check]  دو سقف، هر دو enforce (اصلاحیهٔ ۳ / Issue E):
+            (الف) هفتگی: used_period >= budget → 429 quota_exceeded + audit request.denied_quota.
+            (ب) غلتان ۵ساعته: اگر limit_credits_5h ست است و
+                used_5h = SUM(credits over [now-Wh, now]) >= limit_credits_5h
+                → 429 quota_exceeded_5h + audit request.denied_quota_5h.
+            هر کدام زودتر پر شد همان رد می‌شود (کد و پیام مجزا — §۵.۸).
  [۵ ذخیرهٔ ردیف‌ها]  message(role=user, status=complete) +
             message(role=assistant, content='', status='streaming')   ← ردیف از ابتدا
  [۶ SPAWN]  asyncio.create_task(run_turn) + ثبت در TurnRegistry (در حافظه):
@@ -561,7 +622,8 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
             → 401. last_used_at به‌روز.
  [۲ ACL ]   مدل درخواستی (body.model) → نگاشت به models.model_key → در model_policies[user]؟
             نه → 403.
- [۳ QUOTA pre-check]  همان منطق ۵.۱[۳].
+ [۳ QUOTA pre-check]  همان منطق ۵.۱[۴] — **هر دو سقف** هفتگی و ۵ساعته (اصلاحیهٔ ۳ / Issue E)؛
+            رد → 429 quota_exceeded یا quota_exceeded_5h.
  [۴ CALL] backend ──▶ litellm ──▶ custom upstream handler ──▶ POST $UPSTREAM_BASE_URL/v1/messages.
             اگر endpoint = /v1/chat/completions، LiteLLM خودش شکل OpenAI را ترجمه می‌کند.
             metadata: {user_id, api_key_id, model_key, surface:api}.
@@ -569,6 +631,8 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
  [۶ ثبت مصرف]  usage واقعی از side-channel داخلی (§۶.۱) با کلید x-ecocode-request-id؛
             fallback: بلوک usage خود litellm. همان فرمول؛ api_key_id پر.
             (چت وب و API از یک سهمیهٔ کاربر کم می‌شوند — F5.3.)
+ [۷ لیمیت اکانت]  (اصلاحیهٔ ۳ / Issue F) handler هدرهای anthropic-ratelimit-* پاسخ آپ‌استریم را
+            به /internal/upstream-limits می‌فرستد → upsert در upstream_account_limits (§۴.۵).
 ```
 
 **نگاشت خطای آپ‌استریم (پیاده‌شده — `routers/passthrough.py` + handler):** handler هر پاسخ non-2xx آپ‌استریم را به exception تایپ‌دار litellm با **همان status واقعی** تبدیل می‌کند (وگرنه litellm همه را 500 می‌کرد)؛ backend به client برمی‌گرداند:
@@ -652,6 +716,33 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
 
 **عدالت credit (تأییدشده):** توکن‌های تفکر توسط سرویس آپ‌استریم در `usage.output_tokens` شمرده می‌شوند (extended thinking = output). رویداد `result` خروجی CLI هم همان `output_tokens` تجمیعی را می‌دهد؛ runner آن را مستقیم در ledger با **وزن output مدل** ثبت می‌کند (§ضمیمهٔ الف). پس سطح بالاتر تفکر خودکار گران‌تر است و **هیچ multiplier جداگانه‌ای لازم نیست**. تنها در صورتی که سرویس آپ‌استریم فیلد usage جداگانه‌ای برای thinking tokens برگرداند (مثلاً `thinking_tokens` مجزا)، آن‌را به bucket خروجی اضافه کرده و با همان `output_weight` وزن می‌دهیم — هرگز رایگان حساب نمی‌شود.
 
+### ۵.۸ دو سقف هم‌زمان: هفتگی + غلتان ۵ساعته (اصلاحیهٔ ۳ / Issue E — طراحی)
+
+هدف کاربر: mirror کردن پنجرهٔ ۵ساعتهٔ خودِ آپ‌استریم، **علاوه بر** سهمیهٔ دوره‌ای موجود. هر دو هم‌زمان enforce می‌شوند؛ هرکدام زودتر پر شد درخواست را رد می‌کند.
+
+**مدل داده (تصمیم قطعی): یک ستون روی `quotas`، نه جدول جدا.** توجیه: سقف ۵ساعته یک عدد per-user است، دقیقاً مثل `limit_credits`؛ جدول `quotas` از قبل یک-ردیف-per-user است و `check_quota` همان را می‌خواند. ستون `limit_credits_5h` (nullable) کمترین سطح تغییر است — نه FK جدید، نه join. جدول جدا فقط وقتی توجیه داشت که چند پنجرهٔ دلخواه per-user می‌خواستیم؛ اینجا فقط یک پنجرهٔ ثابت (طولش env، سقفش per-user) داریم.
+
+**محاسبه (rolling، بدون reset):** برخلاف سهمیهٔ دوره‌ای که با `period_start` کار می‌کند، اینجا هیچ reset نیست:
+```
+window = timedelta(hours=ROLLING_WINDOW_HOURS)   # پیش‌فرض ۵
+used_5h = SUM(usage_ledger.credits) WHERE user_id=? AND created_at >= now - window
+```
+ایندکس موجود `idx_ledger_user_time (user_id, created_at)` این query را پوشش می‌دهد — بدون ایندکس جدید.
+
+**enforcement در `services/quota.py`:** `check_quota` بازنویسی می‌شود تا **هر دو** را چک کند (هر دو سطح از این تابع مشترک عبور می‌کنند — §۵.۱/۵.۲):
+1. مثل امروز: `used_period >= budget` → `raise quota_exceeded(...)` (کد `quota_exceeded`).
+2. جدید: اگر `limit_credits_5h` ست و `> 0` بود و `used_5h >= limit_credits_5h` → `raise quota_exceeded_5h(...)` با پیام **«سقف مصرف ۵ ساعتهٔ شما پر شده؛ تا آزاد شدن پنجره صبر کنید.»** و audit `request.denied_quota_5h`.
+- تابع خروجی‌اش گسترش می‌یابد تا `used_5h`, `limit_credits_5h`, `reset_5h_at` را هم برگرداند (برای نمایش و برای Issue-C UX).
+
+**زمان آزاد شدن پنجره (`reset_5h_at`):** چون rolling است، پنجره وقتی آزاد می‌شود که **قدیمی‌ترین credit داخل پنجره** از آن خارج شود:
+```
+oldest = MIN(created_at) روی ردیف‌های داخل [now-window, now]
+reset_5h_at = oldest + window     # زمانی که با aging out آن ردیف، used_5h کاهش می‌یابد
+```
+این «آزادی جزئی» است (اولین کاهش)، نه آزادی کامل — که برای پیام «تا حدود این ساعت صبر کنید» کافی و صادقانه است. در پاسخ 429 و در بدنهٔ خطا برمی‌گردد تا UI (و retry اصلاحیهٔ ۲/Issue C) دلیل و زمان درست را نشان دهد.
+
+**تمایز کدها:** `error_code` روی پیام شکست‌خورده (Issue C) و در بدنهٔ 429: `quota_exceeded` (هفتگی) در برابر `quota_exceeded_5h` (۵ساعته). retry فقط زمانی منطقی است که پنجره آزاد شده باشد؛ UI دکمهٔ «تلاش مجدد» را تا `reset_5h_at` غیرفعال/با تولتیپ نشان می‌دهد.
+
 ---
 
 ## ۶. پیکربندی LiteLLM + آنچه عمداً به آن نمی‌سپاریم
@@ -692,6 +783,7 @@ general_settings:
 3. relay به `POST {base_url}/v1/messages` با شکل اصیل Messages API (هدرها طبق §۴.۴).
 4. **گزارش usage واقعی (پیاده‌شده):** usage کامل پاسخ آپ‌استریم (شامل cache_read/cache_write که schema چانک‌های streaming litellm حملش نمی‌کند) به `POST backend:/internal/usage-report` با کلید `x-ecocode-request-id` برمی‌گردد؛ backend همین را در ledger می‌نویسد (fallback: usage خود litellm). → usage_ledger مستقل از حسابداری litellm، authoritative می‌ماند.
 5. **خطاها:** non-2xx آپ‌استریم به exception تایپ‌دار litellm با status واقعی re-raise می‌شود (جدول §۵.۲).
+6. **(اصلاحیهٔ ۳ / Issue F):** همهٔ response headerهای با پیشوند `anthropic-ratelimit` را خام برمی‌دارد و به `POST /internal/upstream-limits` می‌فرستد (fire-and-forget، شکستش درخواست را نمی‌شکند)؛ parse و upsert در backend (§۴.۵). handler همچنان relay گنگ می‌ماند — نام هدرها را فرض نمی‌کند.
 
 **handler (+ `credentials.py` در backend) تنها فایل‌هایی هستند که با تغییر مکانیزم سرویس آپ‌استریم عوض می‌شوند.**
 
@@ -816,7 +908,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 ### مصرف (کاربر)
 | متد | مسیر | هدف |
 |---|---|---|
-| GET | `/api/usage/me` | مصرف دورهٔ جاری / سقف، تفکیک مدل و کلید، روند روزانه (F6.1) |
+| GET | `/api/usage/me` | مصرف دورهٔ جاری / سقف، تفکیک مدل و کلید، روند روزانه (F6.1) + **(اصلاحیهٔ ۳)** بلوک ۵ساعته: `{used_5h, limit_credits_5h, reset_5h_at}` |
 
 ### passthrough سازگار با ابزار (کلید API، نه session)
 | متد | مسیر | هدف |
@@ -838,7 +930,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | متد | مسیر | هدف |
 |---|---|---|
 | PUT | `/api/admin/users/{id}/policy` | تنظیم مدل‌های مجاز (`{model_keys: [...]}`) → sync به LiteLLM |
-| PUT | `/api/admin/users/{id}/quota` | تنظیم `{period, limit_credits}` |
+| PUT | `/api/admin/users/{id}/quota` | تنظیم `{period, limit_credits, limit_credits_5h?}` — **(اصلاحیهٔ ۳)** سقف ۵ساعته (NULL/۰ = نامحدود) |
 | POST | `/api/admin/users/{id}/quota/bonus` | افزایش موقت سهمیه (`{bonus_credits}`) (F3.4) |
 
 ### ادمین — مدل‌ها و وزن‌ها
@@ -853,6 +945,8 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 |---|---|---|
 | GET | `/api/admin/usage` | مصرف کل سازمان، رتبه‌بندی کاربران، تفکیک مدل، روند (F6.2) |
 | GET | `/api/admin/usage/export.csv` | خروجی CSV |
+| GET | `/api/admin/users/{id}/usage` | **(اصلاحیهٔ ۳ / Issue G)** گزارش مصرف یک کاربر: روند روزانه + by_model + by_key + بلوک ۵ساعته `{used_5h, limit_credits_5h, reset_5h_at}` + بلوک هفتگی `{used, limit, bonus, period_start, reset_at}` — همان دادهٔ «مصرف من» او، فقط متادیتا (هرگز محتوای چت). پارامتر `?since=` |
+| GET | `/api/admin/users/{id}/usage/export.csv` | **(اصلاحیهٔ ۳، nice)** CSV تک‌کاربر (همان ستون‌های usage/export.csv، فیلترشده به این کاربر) |
 | GET | `/api/admin/audit` | لاگ رخدادها (filter بر action/user/بازهٔ زمانی) |
 
 ### ادمین — اتصال آپ‌استریم (بخش ۴)
@@ -861,13 +955,14 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | GET | `/api/admin/upstream/status` | وضعیت اتصال (mode, connected, expires_at, **refresh_token_valid_until, last_refresh, auto_refresh**, base_url, creds_source — شکل کامل در §۴.۱) |
 | PUT | `/api/admin/upstream/apikey` | ست توکن دستی (mode apikey؛ رمزشده ذخیره می‌شود) |
 | PUT | `/api/admin/upstream/mode` | سوییچ mode (`cli_creds`/`apikey`/`mock`) + audit `upstream.mode_change` |
+| GET | `/api/admin/upstream/account-limits` | **(اصلاحیهٔ ۳ / Issue F)** لیمیت خودِ اکانت آپ‌استریم: `{available, windows:[{window, limit, remaining, reset_at, unit, last_updated, stale}], tier, subscription}` (§۴.۵)؛ اگر آپ‌استریم هدری نداده → `available:false` + tier/subscription از credentials |
 
 ### سلامت
 | متد | مسیر | هدف |
 |---|---|---|
 | GET | `/api/health` | liveness: `{status, db, litellm, upstream_mode, upstream_connected, cli_available}` |
 
-**قرارداد خطا (یکنواخت):** بدنهٔ `{ "error": { "code": "quota_exceeded", "message": "پیام فارسی قابل‌نمایش" } }` با status مناسب (401/403/409/429/400/502/503/500). Dev2 روی `error.message` رندر می‌کند و روی `error.code` منطق. کدهای ویژه: `chat_busy` (409، پیام هم‌زمان در یک گفتگو)، `not_retryable` (409، retry روی پیام غیرمجاز)، خانوادهٔ `upstream_*` مسیر passthrough (جدول §۵.۲).
+**قرارداد خطا (یکنواخت):** بدنهٔ `{ "error": { "code": "quota_exceeded", "message": "پیام فارسی قابل‌نمایش" } }` با status مناسب (401/403/409/429/400/502/503/500). Dev2 روی `error.message` رندر می‌کند و روی `error.code` منطق. کدهای ویژه: `chat_busy` (409، پیام هم‌زمان در یک گفتگو)، `not_retryable` (409، retry روی پیام غیرمجاز)، خانوادهٔ `upstream_*` مسیر passthrough (جدول §۵.۲)، و **(اصلاحیهٔ ۳)** `quota_exceeded` / `quota_exceeded_5h` (هر دو 429، با فیلد `reset_at`/`reset_5h_at` در بدنه برای نمایش زمان آزادی).
 
 ---
 
@@ -880,11 +975,12 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 | `/login` | ورود | عمومی | فرم username/password، پیام خطای فارسی، rate-limit-aware |
 | `/chat` | چت (پیش‌فرض کاربر) | user | سایدبار تاریخچه + پنجرهٔ گفتگو + **پنل «فایل‌های من»** |
 | `/chat/:id` | گفتگوی خاص | user | همان، گفتگوی انتخابی |
-| `/usage` | مصرف من | user | نوار پیشرفت سهمیه، تفکیک مدل/کلید، نمودار روند روزانه، هشدار ۸۰٪ |
+| `/usage` | مصرف من | user | نوار پیشرفت سهمیهٔ هفتگی، تفکیک مدل/کلید، نمودار روند روزانه، هشدار ۸۰٪ + **(اصلاحیهٔ ۳)** نوار جداگانهٔ «۵ ساعتهٔ اخیر» (used_5h/limit + «آزاد می‌شود حدود …») در کنار نوار هفتگی |
 | `/keys` | کلیدهای API من | user | لیست + ساخت (نمایش یک‌بارهٔ کلید در modal با دکمهٔ کپی) + ابطال |
 | `/admin/users` | مدیریت کاربران | admin | جدول، ساخت/ویرایش/غیرفعال، لینک به policy/quota |
-| `/admin/policies` | سیاست‌ها | admin | تنظیم مدل‌های مجاز و سهمیهٔ هر کاربر |
-| `/admin/usage` | مصرف کل | admin | رتبه‌بندی کاربران، تفکیک مدل، روند، دکمهٔ CSV |
+| `/admin/policies` | سیاست‌ها | admin | تنظیم مدل‌های مجاز و سهمیهٔ هر کاربر + **(اصلاحیهٔ ۳)** فیلد «سقف ۵ ساعته» |
+| `/admin/usage` | مصرف کل | admin | رتبه‌بندی کاربران (هر ردیف لینک به گزارش کاربر)، تفکیک مدل، روند، دکمهٔ CSV + **(اصلاحیهٔ ۳)** کارت «لیمیت اکانت اصلی» (مصرف/باقی‌مانده/reset هر پنجره + `last_updated`؛ در نبود داده: فقط tier/subscription و پیام صریح) |
+| `/admin/users/:id/usage` | گزارش کاربر | admin | **(اصلاحیهٔ ۳ / Issue G)** drill-down: همان نمای «مصرف من» کاربر (روند، by_model، by_key، نوار هفتگی و ۵ساعته) + دکمهٔ CSV تک‌کاربر — فقط متادیتا، هرگز محتوای چت |
 | `/admin/models` | مدل‌ها و وزن‌ها | admin | ویرایش input/output/cache وزن هر مدل |
 | `/admin/settings` | اتصال آپ‌استریم | admin | **کارت وضعیت توکن (اصلاحیهٔ ۲):** «توکن معتبر تا …»، «refresh token معتبر تا … / نامشخص»، آخرین refresh (زمان/نتیجه/خطا)، وضعیت auto_refresh؛ CTA فارسی «claude login روی سرور» **فقط** وقتی `degraded`/`failed` (§۴.۱)؛ + ورود توکن apikey، سوییچ mode |
 | `/admin/audit` | لاگ رخدادها | admin | جدول فیلترپذیر audit_log |
@@ -985,6 +1081,21 @@ repo/
 3. **B:** کارت وضعیت توکن در `/admin/settings` (چهار فیلد + CTA شرطی).
 4. **D:** thinking-level picker کنار model picker (محدود به `max_thinking_level`)، ارسال `thinking_level` در body، همگام‌سازی با default گفتگو، و badge سطح تفکر روی حباب‌های assistant.
 
+### تقسیم کار اصلاحیهٔ ۳ (Issues E+F+G) — پس از integration اصلاحیهٔ ۲
+
+> **پیش‌نیاز:** روی branch بعد از merge اصلاحیهٔ ۲؛ **revision متوالی Alembic** (down_revision = آخرین revision اصلاحیهٔ ۲). ستون‌ها با ADD COLUMN اضافه می‌شوند (nullable، بدون بازنویسی جداول موجود). E مستقل از F است و می‌تواند موازی برود؛ G به هر دو (به‌ویژه E برای بلوک ۵ساعته) وابسته است پس آخر.
+
+**Dev1 — backend (به این ترتیب):**
+1. **E:** migration `quotas.limit_credits_5h` (nullable)؛ بازنویسی `services/quota.py`: `check_quota` هر دو سقف را چک کند، تابع `get_used_5h(window)` و محاسبهٔ `reset_5h_at` (min(created_at) داخل پنجره + window)؛ خطای جدید `quota_exceeded_5h` در `errors.py` با `reset_5h_at` در بدنه؛ audit `request.denied_quota_5h`؛ env `ROLLING_WINDOW_HOURS`؛ گسترش `/api/usage/me` و `PUT quota` با فیلدهای ۵ساعته. **بدون** تغییر `run_periodic_reset` (پنجرهٔ غلتان reset ندارد).
+2. **F:** جدول `upstream_account_limits` (migration)؛ endpoint داخلی `POST /internal/upstream-limits` (parse خانوادهٔ `anthropic-ratelimit-*` → window/limit/remaining/reset، upsert)؛ افزودن capture هدر در `ecocode_upstream_handler.py` (fire-and-forget)؛ endpoint `GET /api/admin/upstream/account-limits` (+ محاسبهٔ `stale` از `last_updated`، fallback به tier/subscription از credentials)؛ probe اختیاری پشت env (پیش‌فرض خاموش).
+3. **G:** endpoint `GET /api/admin/users/{id}/usage` (بازاستفاده از منطق `admin_usage.py` با فیلتر `user_id` + بلوک‌های ۵ساعته/هفتگی از quota service) + CSV تک‌کاربر (فیلتر همان query موجود).
+4. regenerate `docs/openapi.json` و اطلاع به Dev2.
+
+**Dev2 — frontend:**
+1. **E:** نوار «۵ ساعتهٔ اخیر» در `/usage`؛ فیلد «سقف ۵ ساعته» در ویرایشگر سهمیهٔ `/admin/policies`؛ در چت، پیام/حباب خطای `quota_exceeded_5h` با متن مخصوص و زمان آزادی (هماهنگ با دکمهٔ retry اصلاحیهٔ ۲/C که تا `reset_5h_at` غیرفعال می‌ماند).
+2. **F:** کارت «لیمیت اکانت اصلی» در `/admin/usage` (پنجره‌ها + `last_updated` + برچسب stale؛ حالت `available:false`).
+3. **G:** صفحهٔ `/admin/users/:id/usage` (drill-down از لیست کاربران و از ردیف‌های رتبه‌بندی مصرف) + دکمهٔ CSV تک‌کاربر.
+
 ---
 
 ## ۱۱. امنیت + برنامهٔ تست/تأیید
@@ -998,7 +1109,7 @@ repo/
 - **کنترل منابع CLI:** semaphore هم‌زمانی + timeout + kill group (پروسهٔ فرزند هم بمیرد)؛ سقف حجم workspace هر کاربر (softquota ~1GB، هشدار در UI) در فاز ۱ فقط گزارشی.
 - **CORS:** پیش‌فرض بسته. فرانت و API هم‌دامنه (پشت یک nginx)؛ اگر باز شد فقط origin سازمان.
 - **بدون محتوای چت در لاگ:** logger backend نباید body پیام‌ها، خروجی CLI یا پاسخ‌ها را لاگ کند. فقط متادیتا (user_id, model, tokens, exit code, request_id). code review این را چک می‌کند.
-- **حریم خصوصی ادمین:** endpointهای ادمین هیچ join به `messages.content` و هیچ دسترسی به workspace کاربران ندارند.
+- **حریم خصوصی ادمین:** endpointهای ادمین هیچ join به `messages.content` و هیچ دسترسی به workspace کاربران ندارند. **(اصلاحیهٔ ۳ / Issue G)** گزارش per-user فقط از `usage_ledger`/`quotas` می‌خواند (توکن، credit، مدل، کلید، زمان) — هرگز از `messages`/`conversations.title`/`attachments`؛ همان قاعدهٔ «ادمین فقط متادیتا».
 - **کوکی:** `HttpOnly + Secure + SameSite=Lax`. TLS در nginx (cert سازمانی).
 - **پایداری/بکاپ:** volumeهای `postgres_data`، `users_data`، `attachments_data`؛ اسکریپت `pg_dump` روزانه + tar از `users_data` (مستند در README). ری‌استارت نباید داده را ببرد.
 - **آپلود فایل:** ذخیره با نام sanitize‌شده داخل workspace؛ سقف حجم؛ mime whitelist.
@@ -1073,4 +1184,4 @@ credits(request) =
 
 ---
 
-*پایان سند فنی v1.2 (اصلاحیهٔ ۲) — آماده برای پیاده‌سازی توسط دو توسعه‌دهنده.*
+*پایان سند فنی v1.3 — اصلاحیهٔ ۲ (A/B/C/D) در حال پیاده‌سازی؛ اصلاحیهٔ ۳ (E/F/G) طراحی‌شده، اجرا پس از integration اصلاحیهٔ ۲.*
