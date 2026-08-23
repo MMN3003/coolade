@@ -39,6 +39,19 @@ settings = get_settings()
 logger = logging.getLogger("ecocode.conversations")
 
 
+DEFAULT_TITLE = "گفتگوی جدید"
+
+
+def _derive_title(content: str) -> str:
+    """First non-empty line of the first message, trimmed to a short title.
+    Slash commands and code still yield a sensible label; empty → default."""
+    for line in (content or "").splitlines():
+        line = line.strip()
+        if line:
+            return line[:48].strip()
+    return DEFAULT_TITLE
+
+
 def _sse(event: str, data: dict) -> bytes:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
 
@@ -100,7 +113,7 @@ async def create_conversation(
     if policy.scalar_one_or_none() is None:
         raise model_not_allowed("این مدل برای شما مجاز نیست.")
 
-    conv = Conversation(user_id=user.id, title=body.title or "گفتگوی جدید", model_id=model.id)
+    conv = Conversation(user_id=user.id, title=body.title or DEFAULT_TITLE, model_id=model.id)
     db.add(conv)
     await db.commit()
     await db.refresh(conv)
@@ -339,6 +352,10 @@ async def send_message(
         # conversation default, not merely what the user asked for (which may have
         # been capped).
         conv.thinking_level = effective_level
+    # Auto-title from the first user message so new chats don't all stay «گفتگوی جدید».
+    # Only overrides the untouched default, never a user-set title.
+    if (conv.title or "").strip() in ("", DEFAULT_TITLE):
+        conv.title = _derive_title(body.content)
     conv.updated_at = datetime.datetime.now(datetime.timezone.utc)
     try:
         await db.commit()
