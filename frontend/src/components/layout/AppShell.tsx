@@ -14,6 +14,7 @@ import Box from '@mui/material/Box';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
 import Avatar from '@mui/material/Avatar';
+import Chip from '@mui/material/Chip';
 import ListSubheader from '@mui/material/ListSubheader';
 import MenuIcon from '@mui/icons-material/Menu';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
@@ -21,6 +22,7 @@ import BarChartIcon from '@mui/icons-material/BarChartOutlined';
 import KeyIcon from '@mui/icons-material/VpnKeyOutlined';
 import HelpIcon from '@mui/icons-material/HelpOutlineOutlined';
 import PeopleIcon from '@mui/icons-material/PeopleAltOutlined';
+import GroupsOutlinedIcon from '@mui/icons-material/GroupsOutlined';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AssessmentIcon from '@mui/icons-material/AssessmentOutlined';
 import MemoryIcon from '@mui/icons-material/MemoryOutlined';
@@ -53,11 +55,13 @@ export default function AppShell() {
     { label: t('nav.chat'), icon: <ChatIcon />, path: '/chat' },
     { label: t('nav.usage'), icon: <BarChartIcon />, path: '/usage' },
     { label: t('nav.keys'), icon: <KeyIcon />, path: '/keys' },
+    { label: t('nav.teams'), icon: <GroupsOutlinedIcon />, path: '/teams' },
     { label: t('nav.help'), icon: <HelpIcon />, path: '/help' },
   ];
 
   const adminItems: NavItem[] = [
     { label: t('nav.adminUsers'), icon: <PeopleIcon />, path: '/admin/users' },
+    { label: t('nav.adminTeams'), icon: <GroupsOutlinedIcon />, path: '/admin/teams' },
     { label: t('nav.adminPolicies'), icon: <TuneIcon />, path: '/admin/policies' },
     { label: t('nav.adminUsage'), icon: <AssessmentIcon />, path: '/admin/usage' },
     { label: t('nav.adminModels'), icon: <MemoryIcon />, path: '/admin/models' },
@@ -160,6 +164,14 @@ export default function AppShell() {
                 <Typography variant="caption" color="text.secondary">
                   {user?.role === 'admin' ? t('admin.users.roleAdmin') : t('admin.users.roleUser')}
                 </Typography>
+                {/* اصلاحیهٔ ۴ / Issue H (TECH.md §10): "نمایش تیم‌ها در نمای پروفایل/هدر از /me" */}
+                {!!user?.teams?.length && (
+                  <Box sx={{ mt: 0.75, display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: 220 }}>
+                    {user.teams.map((tm) => (
+                      <Chip key={tm.id} size="small" variant="outlined" label={tm.name} />
+                    ))}
+                  </Box>
+                )}
               </Box>
             </MenuItem>
             <Divider />

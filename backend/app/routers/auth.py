@@ -7,8 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.deps import client_ip, get_current_user, get_db
 from app.errors import unauthorized, rate_limited
-from app.models import Model, ModelPolicy, User
-from app.schemas import LoginRequest, MeQuotaSummary, MeResponse, OkResponse
+from app.models import Model, ModelPolicy, Team, TeamMember, User
+from app.schemas import LoginRequest, MeQuotaSummary, MeResponse, MeTeamOut, OkResponse
 from app.security import create_session_cookie, login_attempts, verify_password
 from app.services import thinking as thinking_service
 from app.services.audit import record_audit
@@ -101,6 +101,19 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
 
     quota = await get_or_create_quota(db, user.id)
     used = await get_used_credits(db, user.id, quota.period_start)
+
+    # اصلاحیهٔ ۴ / Issue H (TECH.md 8): teams[] on /api/auth/me.
+    teams_result = await db.execute(
+        select(Team.id, Team.name, Team.slug, TeamMember.role_in_team)
+        .join(TeamMember, TeamMember.team_id == Team.id)
+        .where(TeamMember.user_id == user.id)
+        .order_by(Team.name)
+    )
+    teams = [
+        MeTeamOut(id=r[0], name=r[1], slug=r[2], role_in_team=getattr(r[3], "value", r[3]))
+        for r in teams_result.all()
+    ]
+
     await db.commit()
 
     return MeResponse(
@@ -119,4 +132,5 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
             used_credits=used,
             period_start=quota.period_start,
         ),
+        teams=teams,
     )

@@ -61,6 +61,8 @@
     "adminModels": "مدل‌ها و وزن‌ها",
     "adminSettings": "اتصال آپ‌استریم",
     "adminAudit": "لاگ رخدادها",
+    "teams": "تیم‌های من",
+    "adminTeams": "تیم‌ها",
     "profile": "حساب کاربری",
     "quotaBannerWarning": "شما {{percent}}٪ از سهمیهٔ دورهٔ جاری خود را مصرف کرده‌اید.",
     "quotaBannerExceeded": "سقف مصرف دورهٔ جاری شما تمام شده است."
@@ -127,6 +129,22 @@
     "fiveHourResetsAround": "آزاد شدن حدود {{time}}",
     "periodResetsAt": "پایان دورهٔ جاری: {{time}}"
   },
+  "teams": {
+    "title": "تیم‌های من",
+    "empty": "شما عضو هیچ تیمی نیستید.",
+    "membersCount": "{{count}} عضو",
+    "roleMember": "عضو",
+    "roleLead": "سرپرست",
+    "memory": {
+      "title": "حافظهٔ مشترک تیم",
+      "back": "بازگشت",
+      "lastWriterWins": "حافظهٔ مشترک — آخرین نوشته برنده است (بدون قفل هم‌زمانی)",
+      "upload": "بارگذاری فایل",
+      "empty": "هنوز فایلی در حافظهٔ مشترک این تیم نیست.",
+      "deleteConfirmTitle": "حذف فایل",
+      "deleteConfirmBody": "فایل «{{name}}» از حافظهٔ مشترک تیم حذف شود؟ این عمل قابل بازگشت نیست."
+    }
+  },
   "keys": {
     "title": "کلیدهای API من",
     "createKey": "ساخت کلید جدید",
@@ -163,6 +181,30 @@
       "deleteConfirmBody": "این کاربر و همهٔ کلیدهای او حذف/باطل شوند؟",
       "editPolicyQuota": "سیاست و سهمیه",
       "usageReport": "گزارش مصرف"
+    },
+    "teams": {
+      "title": "مدیریت تیم‌ها",
+      "createTeam": "تیم جدید",
+      "editTeam": "ویرایش تیم",
+      "name": "نام تیم",
+      "slug": "اسلاگ",
+      "slugHint": "خالی بگذارید تا خودکار از نام ساخته و یکتا شود.",
+      "description": "توضیحات",
+      "membersCount": "تعداد اعضا",
+      "edit": "ویرایش",
+      "manageMembers": "مدیریت اعضا",
+      "memory": "حافظهٔ مشترک",
+      "deleteConfirmTitle": "حذف تیم",
+      "deleteConfirmBody": "تیم «{{name}}» حذف شود؟ این عمل قابل بازگشت نیست؛ دایرکتوری حافظهٔ آن روی دیسک باقی می‌ماند.",
+      "membersTitle": "اعضای تیم «{{name}}»",
+      "addMember": "افزودن عضو",
+      "selectUser": "انتخاب کاربر",
+      "role": "نقش در تیم",
+      "roleMember": "عضو",
+      "roleLead": "سرپرست",
+      "noMembers": "این تیم هنوز عضوی ندارد.",
+      "removeMember": "حذف از تیم",
+      "allUsersAlreadyMembers": "همهٔ کاربران عضو این تیم هستند."
     },
     "userUsage": {
       "title": "گزارش مصرف کاربر",

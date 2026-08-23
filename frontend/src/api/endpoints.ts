@@ -5,10 +5,13 @@ import type {
   AccountLimitsResponse,
   AccountLimitsResponseWire,
   AddQuotaBonusRequest,
+  AddTeamMemberRequest,
   AdminModel,
   AdminModelWire,
   AdminQuota,
   AdminQuotaWire,
+  AdminTeam,
+  AdminTeamDetail,
   AdminUsageResponse,
   AdminUsageResponseWire,
   AdminUser,
@@ -27,6 +30,7 @@ import type {
   CreateApiKeyResponse,
   CreateConversationRequest,
   CreateModelRequest,
+  CreateTeamRequest,
   CreateUserRequest,
   FiveHourUsage,
   FiveHourUsageWire,
@@ -44,8 +48,12 @@ import type {
   SetModeRequest,
   SetPolicyRequest,
   SetQuotaRequest,
+  TeamMember,
+  TeamMemoryFile,
+  TeamMine,
   UpdateConversationRequest,
   UpdateModelRequest,
+  UpdateTeamRequest,
   UpdateUserRequest,
   UpstreamStatus,
   UsageMeResponse,
@@ -98,7 +106,9 @@ function parseAdminQuota(q: AdminQuotaWire | null): AdminQuota | null {
 }
 
 function parseMe(raw: MeResponseWire): MeResponse {
-  return { ...raw, quota: parseQuota(raw.quota) };
+  // اصلاحیهٔ ۴ / Issue H — `teams` optional on the wire until Dev1 ships it
+  // (types.ts's file-header note); default to [] so callers never null-check.
+  return { ...raw, quota: parseQuota(raw.quota), teams: raw.teams ?? [] };
 }
 
 /** اصلاحیهٔ ۳ / Issue E — null when the backend hasn't shipped the flat 5h fields yet, or no cap is set. */
@@ -251,6 +261,66 @@ export const workspaceApi = {
   downloadUrl: (fileId: string) => `/api/workspace/files/${encodeURIComponent(fileId)}`,
   remove: (fileId: string) =>
     api.delete<Record<string, unknown>>(`/api/workspace/files/${encodeURIComponent(fileId)}`),
+};
+
+// ---------- teams + team shared memory (اصلاحیهٔ ۴ / Issue H+I) ----------
+// See types.ts's file-header note on this section: built purely from
+// TECH.md v1.4 §8 prose, `backend/` had no team files at all at the time —
+// will 404 until Dev1 ships it (§10's H/I work), surfaced as the uniform
+// ApiError like any other not-yet-shipped endpoint.
+
+/** Shared multipart upload helper for both member and admin team-memory endpoints. */
+async function uploadTeamMemoryFile(path: string, file: File): Promise<unknown> {
+  const form = new FormData();
+  form.append('file', file);
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+    body: form,
+    credentials: 'same-origin',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.error?.message ?? 'آپلود فایل ناموفق بود.');
+  }
+  return res.json().catch(() => undefined);
+}
+
+export const teamsApi = {
+  /** «تیم‌های من» — read-only list of the current user's teams. */
+  mine: () => api.get<TeamMine[]>('/api/teams/mine'),
+  /** Members of a team the current user belongs to (404 if not a member — TECH.md §8). */
+  members: (id: number) => api.get<TeamMember[]>(`/api/teams/${id}/members`),
+  memory: {
+    list: (id: number) => api.get<TeamMemoryFile[]>(`/api/teams/${id}/memory/files`),
+    upload: (id: number, file: File) => uploadTeamMemoryFile(`/api/teams/${id}/memory/files`, file),
+    downloadUrl: (id: number, fileId: string) =>
+      `/api/teams/${id}/memory/files/${encodeURIComponent(fileId)}`,
+    remove: (id: number, fileId: string) =>
+      api.delete<Record<string, unknown>>(`/api/teams/${id}/memory/files/${encodeURIComponent(fileId)}`),
+  },
+};
+
+// ---------- admin: teams (اصلاحیهٔ ۴ / Issue H) ----------
+export const adminTeamsApi = {
+  list: () => api.get<AdminTeam[]>('/api/admin/teams'),
+  create: (body: CreateTeamRequest) => api.post<AdminTeam>('/api/admin/teams', body),
+  get: (id: number) => api.get<AdminTeamDetail>(`/api/admin/teams/${id}`),
+  update: (id: number, body: UpdateTeamRequest) => api.patch<AdminTeam>(`/api/admin/teams/${id}`, body),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/admin/teams/${id}`),
+  addMember: (id: number, body: AddTeamMemberRequest) =>
+    api.post<Record<string, unknown>>(`/api/admin/teams/${id}/members`, body),
+  removeMember: (id: number, userId: number) =>
+    api.delete<Record<string, unknown>>(`/api/admin/teams/${id}/members/${userId}`),
+  /** Admin can manage any team's shared memory without needing membership (TECH.md §8). */
+  memory: {
+    list: (id: number) => api.get<TeamMemoryFile[]>(`/api/admin/teams/${id}/memory/files`),
+    upload: (id: number, file: File) => uploadTeamMemoryFile(`/api/admin/teams/${id}/memory/files`, file),
+    downloadUrl: (id: number, fileId: string) =>
+      `/api/admin/teams/${id}/memory/files/${encodeURIComponent(fileId)}`,
+    remove: (id: number, fileId: string) =>
+      api.delete<Record<string, unknown>>(`/api/admin/teams/${id}/memory/files/${encodeURIComponent(fileId)}`),
+  },
 };
 
 // ---------- api keys ----------

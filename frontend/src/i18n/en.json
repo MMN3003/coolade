@@ -60,6 +60,8 @@
     "adminModels": "Models & Weights",
     "adminSettings": "Claude Connection",
     "adminAudit": "Audit Log",
+    "teams": "My Teams",
+    "adminTeams": "Teams",
     "profile": "Account"
   }
 }

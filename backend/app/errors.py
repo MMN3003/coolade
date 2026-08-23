@@ -74,6 +74,44 @@ def quota_exceeded(
     )
 
 
+def upstream_rate_limited_message(
+    *, model: str | None = None, reset_at: str | None = None
+) -> str:
+    """Product-owner follow-up (folded into اصلاحیهٔ ۴ work, 2026-08-22): an upstream
+    429 keeps the requested model — explicitly NO auto-substitution/fallback loop —
+    but the message must be actionable: name the model, suggest a lighter one, and
+    (when the account's 5h window reset time is known, Issue F state) say roughly
+    when it frees up. Shared by both surfaces that can see an upstream 429:
+    routers/passthrough.py (API-key surface) and cli_runner.py's
+    _classify_result_error (web-chat surface, same code+message on the failed
+    message row so the Issue C retry bubble shows the right reason)."""
+    if not model:
+        return "سرویس بالادستی فعلاً شلوغ است؛ کمی بعد دوباره تلاش کنید."
+    message = (
+        f"مدل {model} موقتاً از سمت اکانت محدود شده است (سقف مصرف اشتراک پر شده). "
+        "از یک مدل سبک‌تر مثل claude-haiku استفاده کنید یا کمی بعد دوباره تلاش کنید."
+    )
+    if reset_at:
+        message += f" آزاد شدن حدود {reset_at}."
+    return message
+
+
+def upstream_rate_limited(*, model: str | None = None, reset_at: str | None = None) -> AppError:
+    """429 from the upstream service itself (distinct from our own quota_exceeded*
+    codes above) — code stays `upstream_rate_limited` (TECH.md 5.2's error table),
+    only the message/extra got more actionable."""
+    message = upstream_rate_limited_message(model=model, reset_at=reset_at)
+    return AppError(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        "upstream_rate_limited",
+        message,
+        extra={
+            "reset_at": reset_at,
+            "retry_hint": "می‌توانید کمی بعد دوباره تلاش کنید یا از یک مدل سبک‌تر استفاده کنید.",
+        },
+    )
+
+
 def quota_exceeded_5h(
     message: str = "سقف مصرف ۵ ساعتهٔ شما پر شده؛ تا آزاد شدن پنجره صبر کنید.",
     *,

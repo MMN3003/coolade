@@ -14,10 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import async_session_factory
 from app.deps import ApiKeyPrincipal, client_ip, get_api_key_principal, get_db
-from app.errors import AppError, bad_request, model_not_allowed
+from app.errors import AppError, bad_request, model_not_allowed, upstream_rate_limited
 from app.internal import pop_usage_report
 from app.models import Model, ModelPolicy
-from app.services import ledger
+from app.services import account_limits, ledger
 from app.services.litellm_client import UpstreamServiceError, litellm_client
 from app.services.quota import check_quota
 from app.services.sse import iter_sse_json
@@ -26,16 +26,25 @@ router = APIRouter(prefix="/v1", tags=["passthrough"])
 
 # Upstream HTTP status → (code, پیام) shown to the API client. Anything outside
 # this map (litellm's own 500s, unexpected codes) becomes a 502 upstream_error.
+# NOTE: 429 is handled separately in _upstream_error (model-aware, actionable
+# message — product-owner follow-up, 2026-08-22) and intentionally absent here.
 _UPSTREAM_ERRORS: dict[int, tuple[str, str]] = {
     401: ("upstream_auth_error", "احراز هویت نزد سرویس بالادستی ناموفق بود؛ تنظیمات اعتبارنامه را بررسی کنید."),
     403: ("upstream_forbidden", "سرویس بالادستی این درخواست را مجاز نمی‌داند."),
     404: ("upstream_not_found", "مدل یا مسیر درخواستی در سرویس بالادستی یافت نشد."),
-    429: ("upstream_rate_limited", "سرویس بالادستی فعلاً شلوغ است؛ کمی بعد دوباره تلاش کنید."),
     529: ("upstream_overloaded", "سرویس بالادستی زیر بار سنگین است؛ کمی بعد دوباره تلاش کنید."),
 }
 
 
-def _upstream_error(exc: UpstreamServiceError) -> AppError:
+async def _upstream_error(
+    db: AsyncSession, exc: UpstreamServiceError, model_key: str | None = None
+) -> AppError:
+    if exc.status_code == 429:
+        # Product-owner decision (2026-08-22): keep the model, no auto-substitution —
+        # just make the message actionable (name the model + a lighter suggestion +
+        # the account's 5h reset time when we know it, Issue F state).
+        reset_hint = await account_limits.get_5h_reset_hint(db)
+        return upstream_rate_limited(model=model_key, reset_at=reset_hint)
     if exc.status_code in _UPSTREAM_ERRORS:
         code, message = _UPSTREAM_ERRORS[exc.status_code]
         return AppError(exc.status_code, code, message)
@@ -220,7 +229,7 @@ async def anthropic_messages(
         try:
             resp = await litellm_client.call_chat("/chat/completions", openai_body)
         except UpstreamServiceError as exc:
-            raise _upstream_error(exc)
+            raise await _upstream_error(db, exc, model.model_key)
         choice = (resp.get("choices") or [{}])[0]
         text = ((choice.get("message") or {}).get("content")) or ""
         usage = resp.get("usage") or {}
@@ -250,7 +259,7 @@ async def anthropic_messages(
     try:
         upstream = await _open_upstream_stream(openai_body)
     except UpstreamServiceError as exc:
-        raise _upstream_error(exc)
+        raise await _upstream_error(db, exc, model.model_key)
 
     async def event_stream():
         def sse(event: str, data: dict) -> bytes:
@@ -345,7 +354,7 @@ async def chat_completions(
         try:
             resp = await litellm_client.call_chat("/chat/completions", body)
         except UpstreamServiceError as exc:
-            raise _upstream_error(exc)
+            raise await _upstream_error(db, exc, model.model_key)
         await _record_ledger(
             user_id=user_id,
             api_key_id=api_key_id,
@@ -359,7 +368,7 @@ async def chat_completions(
     try:
         upstream = await _open_upstream_stream(body)
     except UpstreamServiceError as exc:
-        raise _upstream_error(exc)
+        raise await _upstream_error(db, exc, model.model_key)
 
     async def event_stream():
         fallback_usage: dict = {}

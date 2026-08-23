@@ -7,6 +7,7 @@ networks:
 volumes:
   postgres_data:
   users_data:
+  teams_data:
   attachments_data:
   litellm_data:
   frontend_static:
@@ -100,6 +101,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
     volumes:
       - users_data:/data/users
+      - teams_data:/data/teams
       - attachments_data:/data/attachments
       - claude_state:/home/app/.claude
       - ${CLAUDE_CREDS_DIR:-./data/claude-creds}:/host_claude:ro

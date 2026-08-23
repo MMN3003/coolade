@@ -25,7 +25,11 @@ RUN pip install -r requirements.txt
 COPY . .
 RUN chmod +x /app/bin/mock-claude
 
-RUN mkdir -p /data/attachments /data/users /home/app/.claude \
+# /data/teams (اصلاحیهٔ ۴ / Issue I) must exist app-owned in the image so the fresh
+# teams_data named volume inherits app:app ownership on first mount — same mechanism
+# as /data/users (otherwise Docker creates the empty volume's mountpoint as root and
+# the app user can't mkdir /data/teams/<id>).
+RUN mkdir -p /data/attachments /data/users /data/teams /home/app/.claude \
     && chown -R app:app /app /data /home/app
 
 USER app

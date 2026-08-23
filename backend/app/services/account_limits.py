@@ -142,6 +142,19 @@ async def record_raw_headers(
     return len(windows)
 
 
+async def get_5h_reset_hint(db: AsyncSession) -> str | None:
+    """Best-effort "HH:MM" for the account's 5h rate-limit window reset, if we've
+    ever captured an `anthropic-ratelimit-*-5h-reset` header (Issue F state above).
+    Used to append an "آزاد شدن حدود HH:MM" hint onto the improved 429 message —
+    product-owner follow-up folded into اصلاحیهٔ ۴ work (2026-08-22); shared by both
+    routers/passthrough.py and cli_runner.py's _classify_result_error."""
+    rows = (await db.execute(select(UpstreamAccountLimit))).scalars().all()
+    for r in rows:
+        if "5h" in r.window_key.lower() and r.reset_at:
+            return r.reset_at.strftime("%H:%M")
+    return None
+
+
 async def get_account_limits_view(db: AsyncSession) -> dict[str, Any]:
     rows = (await db.execute(select(UpstreamAccountLimit))).scalars().all()
     now = datetime.datetime.now(datetime.timezone.utc)

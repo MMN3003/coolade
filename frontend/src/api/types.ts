@@ -125,10 +125,20 @@ export interface MeResponseWire {
    * thinking-level picker must never offer a level above this.
    */
   max_thinking_level: ThinkingLevel;
+  /**
+   * اصلاحیهٔ ۴ / Issue H (TECH.md §8): "`/api/auth/me` ... +
+   * teams: [{id, name, slug, role_in_team}]". Confirmed against Dev1's
+   * `schemas.py#MeResponse.teams` / `MeTeamOut` (default `[]` server-side
+   * too). Kept optional here defensively until `docs/openapi.json` is
+   * regenerated and this is frozen; `parseMe` below defaults it to `[]`.
+   */
+  teams?: MeTeam[];
 }
 
-export interface MeResponse extends Omit<MeResponseWire, 'quota'> {
+export interface MeResponse extends Omit<MeResponseWire, 'quota' | 'teams'> {
   quota: QuotaSummary | null;
+  /** Always resolved to an array by `parseMe` (see MeResponseWire.teams note). */
+  teams: MeTeam[];
 }
 
 // ---------- conversations / chat ----------
@@ -229,6 +239,104 @@ export interface WorkspaceFile {
   size_bytes: number;
   modified_at: string;
 }
+
+// ---------- teams + team shared memory (اصلاحیهٔ ۴ / Issue H+I) ----------
+//
+// NOT YET in openapi.json (still 1.3.0 on disk — no /api/teams*,
+// /api/admin/teams* paths in it yet). `backend/` had no team files at all
+// when this section was first drafted (built purely from TECH.md v1.4 §3/§8
+// prose); Dev1's `routers/teams.py` + `routers/admin_teams.py` +
+// `schemas.py` landed in parallel shortly after and were read (read-only,
+// per the frontend/backend boundary) to cross-check every shape below —
+// confirmed field-for-field against `schemas.py`'s `TeamMineOut`,
+// `MeTeamOut`, `TeamMemberOut` (incl. `created_at`), `TeamOut`,
+// `TeamDetailOut`, `TeamCreate`, `TeamUpdate`, `TeamMemberAdd`, and the
+// reused `WorkspaceFileOut` for team-memory files. Still MUST be re-verified
+// once Dev1 regenerates `docs/openapi.json` (source of truth per the task
+// brief) — this is a same-tree read, not a frozen contract.
+
+export type TeamRoleInTeam = 'member' | 'lead';
+
+/** GET /api/teams/mine item (TECH.md §8: «تیم‌های من»). */
+export interface TeamMine {
+  id: number;
+  name: string;
+  slug: string;
+  role_in_team: TeamRoleInTeam;
+  member_count: number;
+}
+
+/**
+ * `teams` array on `MeResponse` (TECH.md §8's `/api/auth/me` example):
+ * `{id, name, slug, role_in_team}` — no `member_count` per that prose (only
+ * `TeamMine` from `/api/teams/mine` carries it).
+ */
+export interface MeTeam {
+  id: number;
+  name: string;
+  slug: string;
+  role_in_team: TeamRoleInTeam;
+}
+
+/**
+ * GET /api/teams/{id}/members item, and the `members` array nested in
+ * `AdminTeamDetail`. TECH.md §8: "متادیتا: username/display_name/role_in_team".
+ */
+export interface TeamMember {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  role_in_team: TeamRoleInTeam;
+  created_at: string;
+}
+
+/** GET /api/admin/teams item — "لیست تیم‌ها + شمار اعضا" (TECH.md §8). */
+export interface AdminTeam {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  member_count: number;
+  created_at: string;
+}
+
+/** GET /api/admin/teams/{id} — "جزئیات + اعضا" (TECH.md §8). */
+export interface AdminTeamDetail extends AdminTeam {
+  members: TeamMember[];
+}
+
+/**
+ * POST /api/admin/teams body (TECH.md §8): "slug اگر نبود از name تولید و
+ * یکتاسازی می‌شود" — `slug` is optional on create.
+ */
+export interface CreateTeamRequest {
+  name: string;
+  slug?: string;
+  description?: string | null;
+}
+
+/**
+ * PATCH /api/admin/teams/{id} body — slug is immutable after creation
+ * (TECH.md §8: "slug پس از ساخت ثابت است — چون نام پوشهٔ symlink").
+ */
+export interface UpdateTeamRequest {
+  name?: string;
+  description?: string | null;
+}
+
+/** POST /api/admin/teams/{id}/members body. */
+export interface AddTeamMemberRequest {
+  user_id: number;
+  role_in_team?: TeamRoleInTeam;
+}
+
+/**
+ * Team-memory file list/upload responses reuse the exact `WorkspaceFile`
+ * shape (TECH.md §8: "همان شکل workspace files") for both the member
+ * (`/api/teams/{id}/memory/files`) and admin
+ * (`/api/admin/teams/{id}/memory/files`) endpoint families.
+ */
+export type TeamMemoryFile = WorkspaceFile;
 
 // ---------- API keys ----------
 

@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     cli_timeout_seconds: int = 300
     mock_cli: bool = False
     workspace_root: str = "/data/users"
+    # اصلاحیهٔ ۴ / Issue H+I: /data/teams/<team_id>/memory (TECH.md section 2/3/5.9)
+    teams_root: str = "/data/teams"
 
     admin_username: str = "admin"
     admin_password: str = "changeme123"

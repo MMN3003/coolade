@@ -26,6 +26,15 @@ class MeQuotaSummary(BaseModel):
     period_start: datetime.datetime
 
 
+class MeTeamOut(BaseModel):
+    """اصلاحیهٔ ۴ / Issue H — TECH.md 8: `/api/auth/me` teams field."""
+
+    id: int
+    name: str
+    slug: str
+    role_in_team: str
+
+
 class MeResponse(BaseModel):
     id: int
     username: str
@@ -36,6 +45,7 @@ class MeResponse(BaseModel):
     allowed_models: list[str]
     quota: MeQuotaSummary | None
     max_thinking_level: str  # Issue D — caps the web chat thinking-level picker
+    teams: list[MeTeamOut] = []  # اصلاحیهٔ ۴ / Issue H
 
 
 # ---------- Conversations ----------
@@ -345,6 +355,58 @@ class WorkspaceFileOut(BaseModel):
     relpath: str
     size_bytes: int
     modified_at: datetime.datetime
+
+
+# ---------- Teams (اصلاحیهٔ ۴ / Issue H+I) ----------
+TeamRoleLiteral = Literal["member", "lead"]
+
+
+class TeamCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    slug: str | None = None  # generated from name if absent; uniquified either way
+    description: str | None = None
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    # slug is intentionally NOT editable here — immutable after creation (TECH.md 8).
+
+
+class TeamMemberAdd(BaseModel):
+    user_id: int
+    role_in_team: TeamRoleLiteral = "member"
+
+
+class TeamMemberOut(BaseModel):
+    user_id: int
+    username: str
+    display_name: str | None
+    role_in_team: str
+    created_at: datetime.datetime
+
+
+class TeamOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    member_count: int
+    created_at: datetime.datetime
+
+
+class TeamDetailOut(TeamOut):
+    members: list[TeamMemberOut] = []
+
+
+class TeamMineOut(BaseModel):
+    """GET /api/teams/mine — read-only "تیم‌های من" view (TECH.md 8)."""
+
+    id: int
+    name: str
+    slug: str
+    role_in_team: str
+    member_count: int
 
 
 # ---------- Health ----------

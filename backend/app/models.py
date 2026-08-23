@@ -64,12 +64,21 @@ class ThinkingLevel(str, enum.Enum):
     deep = "deep"
 
 
+class TeamRole(str, enum.Enum):
+    """اصلاحیهٔ ۴ / Issue H (TECH.md section 3). Display/future-only — access
+    enforcement is purely "is a member of team_members", never this role."""
+
+    member = "member"
+    lead = "lead"
+
+
 user_role_enum = PgEnum(UserRole, name="user_role", create_type=False)
 auth_source_enum = PgEnum(AuthSource, name="auth_source", create_type=False)
 quota_period_enum = PgEnum(QuotaPeriod, name="quota_period", create_type=False)
 upstream_mode_enum = PgEnum(UpstreamMode, name="upstream_mode", create_type=False)
 message_status_enum = PgEnum(MessageStatus, name="message_status", create_type=False)
 thinking_level_enum = PgEnum(ThinkingLevel, name="thinking_level", create_type=False)
+team_role_enum = PgEnum(TeamRole, name="team_role", create_type=False)
 
 
 class User(Base):
@@ -98,6 +107,46 @@ class User(Base):
         ),
         Index("idx_users_active", "is_active"),
     )
+
+
+class Team(Base):
+    """اصلاحیهٔ ۴ / Issue H (TECH.md section 3). Slug is generated once at creation
+    (routers/admin_teams.py) and immutable afterwards — it names the on-disk
+    directory / symlink target (`/data/teams/<id>/memory`, `./teams/<slug>/`)."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TeamMember(Base):
+    """Many-to-many membership. Sole source of truth for team access — both the
+    CLI runner's symlink sync (app/cli_runner.py::sync_team_links) and the
+    /api/teams/*, /api/admin/teams/* endpoints read this table, never the
+    filesystem, to decide who can reach a team's shared memory (TECH.md 5.4/5.9/11.1)."""
+
+    __tablename__ = "team_members"
+
+    team_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("teams.id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    role_in_team: Mapped[TeamRole] = mapped_column(
+        team_role_enum, nullable=False, default=TeamRole.member
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("idx_team_members_user", "user_id"),)
 
 
 class ApiKey(Base):

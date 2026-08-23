@@ -16,6 +16,7 @@ from app.errors import AppError, app_error_handler, unhandled_error_handler, val
 from app.internal import router as internal_router
 from app.routers import (
     admin_models,
+    admin_teams,
     admin_upstream,
     admin_usage,
     admin_users,
@@ -24,6 +25,7 @@ from app.routers import (
     health,
     keys,
     passthrough,
+    teams,
     usage,
     workspace,
 )
@@ -68,7 +70,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="EcoCode Gateway", version="1.3.0", lifespan=lifespan)
+app = FastAPI(title="EcoCode Gateway", version="1.4.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 if origins:
@@ -110,10 +112,12 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(workspace.router)
+app.include_router(teams.router)
 app.include_router(keys.router)
 app.include_router(usage.router)
 app.include_router(passthrough.router)
 app.include_router(admin_users.router)
+app.include_router(admin_teams.router)
 app.include_router(admin_models.router)
 app.include_router(admin_usage.router)
 app.include_router(admin_upstream.router)

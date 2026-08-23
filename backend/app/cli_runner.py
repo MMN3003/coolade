@@ -21,6 +21,8 @@ from app.db import async_session_factory
 from app.models import Setting, ThinkingLevel
 from app.security import decrypt_secret
 from app.services import thinking as thinking_service
+from app.team_files import team_memory_dir
+from app.team_membership import member_team_rows
 
 logger = logging.getLogger("ecocode.cli_runner")
 
@@ -67,6 +69,69 @@ def workspace_dir(user_id: int) -> Path:
     return ws
 
 
+async def sync_team_links(user_id: int, cwd: Path) -> list[tuple[int, str, str]]:
+    """اصلاحیهٔ ۴ / Issue I (TECH.md 5.4/5.9): called BEFORE every spawn. Makes every
+    MEMBER team's shared memory visible as <cwd>/teams/<slug> -> /data/teams/<team_id>/memory
+    (a symlink *under* cwd, so the existing `--allowedTools "Read(./**),Write(./**),
+    Edit(./**),Glob,Grep"` already covers it — no absolute-path tool grant added).
+    Removes stale links for teams the user is no longer a member of, and (re)writes
+    a small generated <cwd>/teams/README.md hint (member team list + a nudge to read
+    the relevant team folder before answering — the "hybrid" half of the file-visibility
+    design, TECH.md 5.9).
+
+    team_members (via member_team_rows) is authoritative — never the presence of a
+    symlink already on disk — so a membership change takes effect on the user's very
+    next turn. Returns the member team list; the caller also uses it to widen the
+    write-containment set (see run_conversation_turn / _resolve_written_path)."""
+    async with async_session_factory() as db:
+        member_teams = await member_team_rows(db, user_id)
+
+    teams_dir = cwd / "teams"
+    member_slugs = {slug for _tid, slug, _name in member_teams}
+
+    if teams_dir.exists():
+        for entry in teams_dir.iterdir():
+            if entry.is_symlink() and entry.name not in member_slugs:
+                try:
+                    entry.unlink()
+                except OSError:
+                    logger.warning("sync_team_links: failed to remove stale link %s", entry)
+
+    if not member_teams:
+        # Per TECH.md 5.4: a user in no team gets an empty/absent teams/ dir.
+        return member_teams
+
+    teams_dir.mkdir(exist_ok=True)
+    for team_id, slug, _name in member_teams:
+        target = team_memory_dir(team_id)
+        link_path = teams_dir / slug
+        try:
+            if link_path.is_symlink():
+                if os.path.realpath(link_path) != os.path.realpath(target):
+                    link_path.unlink()
+                    link_path.symlink_to(target)
+            elif not link_path.exists():
+                link_path.symlink_to(target)
+            # else: an unexpected non-symlink already occupies this name — leave it
+            # alone rather than clobber user data.
+        except OSError:
+            logger.warning("sync_team_links: failed to link team_id=%s for user_id=%s", team_id, user_id)
+
+    readme_lines = [
+        "# تیم‌های شما\n\n",
+        "حافظه‌های مشترک هر تیم در پوشهٔ هم‌نامش اینجاست؛ پیش از پاسخ به سؤالات "
+        "مرتبط با تیم، این پوشه را بخوان.\n\n",
+    ]
+    for _tid, slug, name in member_teams:
+        readme_lines.append(f"- **{name}** → `./teams/{slug}/`\n")
+    try:
+        (teams_dir / "README.md").write_text("".join(readme_lines), encoding="utf-8")
+    except OSError:
+        logger.warning("sync_team_links: failed to write teams/README.md for user_id=%s", user_id)
+
+    return member_teams
+
+
 async def _resolve_mode() -> str:
     env_mode = os.environ.get("UPSTREAM_MODE")
     if env_mode:
@@ -111,34 +176,73 @@ async def _build_env(thinking_level: ThinkingLevel) -> dict[str, str]:
     return env
 
 
-def _build_command(prompt: str, upstream_model: str, resume_session_id: str | None) -> list[str]:
+def _build_command(
+    prompt: str,
+    upstream_model: str,
+    resume_session_id: str | None,
+    team_dirs: list[str] | None = None,
+) -> list[str]:
     if settings.mock_cli:
         cmd = ["python3", "/app/bin/mock-claude"]
     else:
         cmd = ["claude"]
     cmd += ["-p", prompt, "--output-format", "stream-json", "--verbose", "--model", upstream_model]
+    # acceptEdits auto-approves Write/Edit within the permitted dirs (cwd + any --add-dir
+    # team memory dirs) so the agent can actually edit team memory without an interactive
+    # prompt; it does NOT grant Bash/web (still in --disallowedTools) nor writes outside
+    # the permitted dirs (e.g. /tmp, /etc still blocked) — verified 2026-08-23.
+    cmd += ["--permission-mode", "acceptEdits"]
     if resume_session_id:
         cmd += ["--resume", resume_session_id]
-    cmd += ["--allowedTools", ALLOWED_TOOLS, "--disallowedTools", DISALLOWED_TOOLS]
+    # اصلاحیهٔ ۴ / Issue I: a symlink under cwd (teams/<slug>) is not enough — Claude Code
+    # canonicalizes it to the real /data/teams/<id>/memory path, which lives OUTSIDE cwd,
+    # so the CLI's own permission layer blocks it. Grant each member team dir explicitly
+    # via --add-dir AND matching Read/Write/Edit allow-rules on the real path.
+    allowed = ALLOWED_TOOLS
+    for d in team_dirs or []:
+        cmd += ["--add-dir", d]
+        allowed += f",Read({d}/**),Write({d}/**),Edit({d}/**)"
+    cmd += ["--allowedTools", allowed, "--disallowedTools", DISALLOWED_TOOLS]
     return cmd
 
 
 _WRITE_TOOL_NAMES = {"Write", "Edit"}
 
 
-def _classify_result_error(subtype: str | None, errors: list[str]) -> tuple[str, str]:
+def _classify_result_error(
+    subtype: str | None,
+    errors: list[str],
+    *,
+    upstream_model: str | None = None,
+    reset_hint: str | None = None,
+) -> tuple[str, str]:
     """Best-effort mapping of an upstream/CLI failure to (error_code, پیام فارسی) —
     TECH.md messages.error_code enum: quota_exceeded | upstream_rate_limited | cli_error
-    | timeout | aborted_restart (timeout/aborted_restart are set elsewhere)."""
+    | timeout | aborted_restart (timeout/aborted_restart are set elsewhere).
+
+    An upstream rate-limit (429/overloaded) maps to error_code=upstream_rate_limited
+    with the SAME actionable message as the API-key surface (model name + lighter-model
+    suggestion + account 5h reset hint when known) — product-owner follow-up
+    (2026-08-22); shared wording lives in app.errors.upstream_rate_limited_message so
+    both the failed message row (Issue C retry bubble) and passthrough agree."""
     text = (" ".join(errors or []) + " " + (subtype or "")).lower()
     if any(k in text for k in ("rate_limit", "429", "overloaded", "529")):
-        return "upstream_rate_limited", "سرویس بالادستی فعلاً شلوغ است؛ کمی بعد دوباره تلاش کنید."
+        from app.errors import upstream_rate_limited_message
+
+        return "upstream_rate_limited", upstream_rate_limited_message(
+            model=upstream_model, reset_at=reset_hint
+        )
     if any(k in text for k in ("quota", "credit balance", "insufficient_quota", "insufficient credit")):
         return "quota_exceeded", "سهمیهٔ سرویس بالادستی تمام شده است."
     return "cli_error", "اجرای دستیار با خطا مواجه شد."
 
 
-def _translate_event(obj: dict[str, Any]) -> list[dict[str, Any]]:
+def _translate_event(
+    obj: dict[str, Any],
+    *,
+    upstream_model: str | None = None,
+    reset_hint: str | None = None,
+) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     t = obj.get("type")
 
@@ -190,7 +294,10 @@ def _translate_event(obj: dict[str, Any]) -> list[dict[str, Any]]:
     if t == "result":
         if obj.get("is_error"):
             cli_errors = [str(e) for e in obj.get("errors") or []]
-            code, message_fa = _classify_result_error(obj.get("subtype"), cli_errors)
+            code, message_fa = _classify_result_error(
+                obj.get("subtype"), cli_errors,
+                upstream_model=upstream_model, reset_hint=reset_hint,
+            )
             events.append(
                 {
                     "event": "error",
@@ -227,7 +334,13 @@ def _translate_event(obj: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def _run_process(
-    cmd: list[str], cwd: Path, env: dict[str, str], timeout: int
+    cmd: list[str],
+    cwd: Path,
+    env: dict[str, str],
+    timeout: int,
+    *,
+    upstream_model: str | None = None,
+    reset_hint: str | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     proc = await asyncio.create_subprocess_exec(
         *cmd,
@@ -260,7 +373,9 @@ async def _run_process(
                 obj = json.loads(stripped)
             except json.JSONDecodeError:
                 continue
-            for ev in _translate_event(obj):
+            for ev in _translate_event(
+                obj, upstream_model=upstream_model, reset_hint=reset_hint
+            ):
                 if ev["event"] in ("done", "error"):
                     got_terminal_event = True
                 yield ev
@@ -296,18 +411,29 @@ def _is_session_not_found(ev: dict[str, Any]) -> bool:
     return any(_SESSION_NOT_FOUND_MARKER in e for e in ev.get("cli_errors") or [])
 
 
-def _resolve_written_path(ws_real: Path, file_path: str) -> Path | None:
-    """realpath-resolve a Write/Edit tool's reported path against the workspace root;
-    return None if it escapes containment (folded-in fix: a denied/out-of-workspace
-    write, e.g. /tmp/x or /etc/passwd, must never appear in files_changed)."""
+def _resolve_written_path(
+    roots: list[tuple[Path, str | None]], base: Path, file_path: str
+) -> tuple[Path, str] | None:
+    """realpath-resolve a Write/Edit tool's reported path against the containment
+    ROOT UNION (اصلاحیهٔ ۴ / Issue I, TECH.md 5.4: workspace ∪ realpath(/data/teams/<tid>/memory)
+    for every team the user is currently a member of); return None if it escapes
+    every root in the union (folded-in fix, pre-اصلاحیهٔ ۴: a denied/out-of-workspace
+    write, e.g. /tmp/x or /etc/passwd, must never appear in files_changed).
+
+    `roots` is `[(ws_real, None)] + [(team_memory_real, "teams/<slug>"), ...]` — the
+    label (when set) is prefixed onto the returned display-relpath so a team-memory
+    write shows as "teams/hr/notes.md" rather than escaping relative_to(ws_real)."""
     try:
         candidate = Path(file_path)
-        real = Path(os.path.realpath(candidate if candidate.is_absolute() else ws_real / candidate))
+        real = Path(os.path.realpath(candidate if candidate.is_absolute() else base / candidate))
     except (OSError, ValueError):
         return None
-    if real != ws_real and ws_real not in real.parents:
-        return None
-    return real
+    for root, label in roots:
+        if real == root or root in real.parents:
+            rel = real.relative_to(root)
+            display = str(rel) if label is None else str(Path(label) / rel)
+            return real, display
+    return None
 
 
 async def run_conversation_turn(
@@ -337,10 +463,30 @@ async def run_conversation_turn(
     ws = workspace_dir(user_id)
     ws_real = Path(os.path.realpath(ws))
     env = await _build_env(thinking_level)
+    # اصلاحیهٔ ۴ / Issue I: sync <cwd>/teams/<slug> symlinks to CURRENT membership
+    # before spawn, and widen the write-containment set to workspace ∪ member team
+    # memory dirs (TECH.md 5.4/5.9).
+    member_teams = await sync_team_links(user_id, ws)
+    containment_roots: list[tuple[Path, str | None]] = [(ws_real, None)]
+    team_dirs: list[str] = []
+    for team_id, slug, _name in member_teams:
+        team_real = Path(os.path.realpath(team_memory_dir(team_id)))
+        containment_roots.append((team_real, f"teams/{slug}"))
+        team_dirs.append(str(team_real))
+    # Account 5h reset hint for the actionable upstream-429 message (product-owner
+    # follow-up, 2026-08-22) — read once up front; the CLI turn itself has no DB.
+    reset_hint: str | None = None
+    try:
+        from app.services import account_limits
+
+        async with async_session_factory() as db:
+            reset_hint = await account_limits.get_5h_reset_hint(db)
+    except Exception:  # pragma: no cover - telemetry only, never block a turn
+        reset_hint = None
     async with _semaphore:
         resume = resume_session_id
         for attempt in (1, 2):
-            cmd = _build_command(prompt, upstream_model, resume)
+            cmd = _build_command(prompt, upstream_model, resume, team_dirs)
             # Hold back leading "start" events until real output arrives, so a
             # session-not-found first attempt is discarded invisibly and the
             # retry's own start event is the only one the caller ever sees.
@@ -349,7 +495,10 @@ async def run_conversation_turn(
             retry = False
             pending_writes: dict[str, str] = {}  # tool_use_id -> raw file_path (unconfirmed)
             confirmed_files: list[str] = []
-            async for ev in _run_process(cmd, cwd=ws, env=env, timeout=settings.cli_timeout_seconds):
+            async for ev in _run_process(
+                cmd, cwd=ws, env=env, timeout=settings.cli_timeout_seconds,
+                upstream_model=upstream_model, reset_hint=reset_hint,
+            ):
                 if not streamed and ev["event"] == "start":
                     pending.append(ev)
                     continue
@@ -371,9 +520,10 @@ async def run_conversation_turn(
                 if ev["event"] == "tool_result":
                     file_path = pending_writes.pop(ev.get("tool_use_id"), None)
                     if file_path and not ev.get("is_error"):
-                        resolved = _resolve_written_path(ws_real, file_path)
+                        resolved = _resolve_written_path(containment_roots, ws_real, file_path)
                         if resolved is not None:
-                            confirmed_files.append(str(resolved.relative_to(ws_real)))
+                            _real, display = resolved
+                            confirmed_files.append(display)
                     continue  # internal-only event, never forwarded as SSE
 
                 if ev["event"] == "done":
