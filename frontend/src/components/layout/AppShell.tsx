@@ -90,25 +90,26 @@ export default function AppShell() {
             </IconButton>
           </Tooltip>
         )}
-        {/* Floating opener: mobile drawer (also anchored right → inline-start). */}
-        <Tooltip title={t('chat.expandSidebar')}>
-          <IconButton
-            onClick={() => setMobileOpen(true)}
-            size="small"
-            sx={{
-              display: { xs: 'inline-flex', md: 'none' },
-              position: 'absolute',
-              top: 8,
-              insetInlineStart: 8,
-              zIndex: 1200,
-              bgcolor: 'background.paper',
-              border: 1,
-              borderColor: 'divider',
-            }}
-          >
+        {/* Mobile: a slim in-flow top bar for the drawer opener. A floating
+            absolutely-positioned button sat ON TOP of page content (it covered
+            the chat page's files button and admin page titles — reported
+            2026-09-01); an in-flow bar pushes content down instead. */}
+        <Box
+          sx={{
+            display: { xs: 'flex', md: 'none' },
+            alignItems: 'center',
+            gap: 1,
+            px: 1,
+            minHeight: 44,
+            borderBottom: 1,
+            borderColor: 'divider',
+            flexShrink: 0,
+          }}
+        >
+          <IconButton onClick={() => setMobileOpen(true)} size="small" aria-label={t('chat.expandSidebar')}>
             <MenuIcon fontSize="small" />
           </IconButton>
-        </Tooltip>
+        </Box>
 
         <QuotaBanner />
         <Box sx={{ flexGrow: 1, overflow: 'auto' }}>

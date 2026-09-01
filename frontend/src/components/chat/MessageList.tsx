@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTheme } from '@mui/material/styles';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Typography from '@mui/material/Typography';
@@ -37,6 +38,14 @@ function thinkingLabel(t: (k: string) => string, level: ThinkingLevel): string {
 export default function MessageList({ messages, live, onRetry, retryPendingId }: Props) {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
+  // PHYSICAL alignment by product decision (2026-09-01): user bubbles hug the
+  // LEFT edge, assistant replies the RIGHT edge — in both fa/rtl and en/ltr.
+  // Expressed via flex-start/flex-end AGAINST the theme direction because the
+  // stylis RTL plugin flips physical 'left'/'right' keywords in emitted CSS
+  // (verified 2026-09-02: justifyContent:'left' rendered on the right).
+  const isRtl = useTheme().direction === 'rtl';
+  const userJustify = isRtl ? 'flex-end' : 'flex-start'; // → physical LEFT
+  const assistantJustify = isRtl ? 'flex-start' : 'flex-end'; // → physical RIGHT
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -69,19 +78,19 @@ export default function MessageList({ messages, live, onRetry, retryPendingId }:
           m.role === 'assistant' && !isFailed && m.thinking_level && m.thinking_level !== 'off';
 
         return (
-          <Box key={m.id} sx={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+          <Box key={m.id} sx={{ display: 'flex', justifyContent: isUser ? userJustify : assistantJustify }}>
             <Paper
               elevation={0}
               sx={{
-                px: isUser ? 2 : 0.5,
-                py: isUser ? 1 : 0.5,
-                maxWidth: isUser ? '85%' : '100%',
-                width: isUser ? 'auto' : '100%',
-                borderRadius: isUser ? 4 : 2,
-                bgcolor: isUser ? SURFACE_2 : 'transparent',
+                px: isUser ? 2 : 1.5,
+                py: 1,
+                maxWidth: '88%',
+                width: 'auto',
+                borderRadius: 4,
+                bgcolor: isUser ? SURFACE_2 : 'background.paper',
                 color: 'text.primary',
-                border: isFailed ? 1 : 0,
-                borderColor: 'error.main',
+                border: 1,
+                borderColor: isFailed ? 'error.main' : isUser ? 'transparent' : 'divider',
               }}
             >
               {m.role === 'assistant' ? (
@@ -127,15 +136,18 @@ export default function MessageList({ messages, live, onRetry, retryPendingId }:
       })}
 
       {showLiveBubble && (
-        <Box sx={{ display: 'flex' }}>
+        <Box sx={{ display: 'flex', justifyContent: assistantJustify }}>
           <Paper
             elevation={0}
             sx={{
-              px: 0.5,
-              py: 0.5,
-              width: '100%',
-              bgcolor: 'transparent',
-              border: 0,
+              px: 1.5,
+              py: 1,
+              maxWidth: '88%',
+              width: live.text ? 'auto' : '60%',
+              borderRadius: 4,
+              bgcolor: 'background.paper',
+              border: 1,
+              borderColor: 'divider',
             }}
           >
             {live.text ? (

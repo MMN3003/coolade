@@ -187,6 +187,12 @@ def _build_command(
     else:
         cmd = ["claude"]
     cmd += ["-p", prompt, "--output-format", "stream-json", "--verbose", "--model", upstream_model]
+    # Live token streaming: without this the CLI only emits one `assistant` event per
+    # COMPLETED message, so the whole reply arrived as a single delta at turn end and
+    # the user saw nothing until done (reported 2026-09-01). With it, the CLI also
+    # emits `stream_event` objects carrying real text_delta chunks; _translate_event
+    # forwards those and SKIPS the (now duplicate) text blocks of complete messages.
+    cmd += ["--include-partial-messages"]
     # acceptEdits auto-approves Write/Edit within the permitted dirs (cwd + any --add-dir
     # team memory dirs) so the agent can actually edit team memory without an interactive
     # prompt; it does NOT grant Bash/web (still in --disallowedTools) nor writes outside
@@ -250,12 +256,27 @@ def _translate_event(
         events.append({"event": "start", "session_id": obj.get("session_id")})
         return events
 
+    if t == "stream_event":
+        # --include-partial-messages: the raw Anthropic SSE event is nested under
+        # `event`. Only text deltas become UI deltas; thinking/other deltas are
+        # internal. (Complete `assistant` messages still follow — their text
+        # blocks are skipped below to avoid double-emitting the same content.)
+        inner = obj.get("event") or {}
+        if inner.get("type") == "content_block_delta":
+            delta = inner.get("delta") or {}
+            if delta.get("type") == "text_delta" and delta.get("text"):
+                events.append({"event": "delta", "text": delta["text"]})
+        return events
+
     if t == "assistant":
         message = obj.get("message") or {}
         for block in message.get("content") or []:
             btype = block.get("type")
             if btype == "text" and block.get("text"):
-                events.append({"event": "delta", "text": block["text"]})
+                # Text already streamed via stream_event deltas above — emitting it
+                # here again would duplicate every reply. Tool_use blocks are NOT
+                # covered by partial deltas, so they still translate below.
+                continue
             elif btype == "tool_use":
                 name = block.get("name") or "tool"
                 inp = block.get("input") or {}

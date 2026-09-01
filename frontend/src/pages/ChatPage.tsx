@@ -92,6 +92,7 @@ export default function ChatPage() {
   const [quota5hBlockedUntil, setQuota5hBlockedUntil] = useState<string | null>(null);
   // File/cost side panel is collapsed by default; revealed on request (§F4.6).
   const [filesOpen, setFilesOpen] = useState(false);
+  const [stopPending, setStopPending] = useState(false);
 
   const stream = useConversationStream();
   const justCreatedIdRef = useRef<number | null>(null);
@@ -302,6 +303,20 @@ export default function ChatPage() {
   const isEmpty =
     !loadingConversation && !erroredConversation && displayMessages.length === 0 && !hasLiveBubble;
 
+  async function handleStop() {
+    if (!conversationId || stopPending) return;
+    setStopPending(true);
+    try {
+      await conversationsApi.stopGeneration(conversationId);
+      // Finalization arrives through the stream (error/stopped event) — nothing
+      // else to do here; the button just shows a spinner until then.
+    } catch (err) {
+      setSendError(getErrorMessage(err));
+    } finally {
+      setStopPending(false);
+    }
+  }
+
   const composer = (
     <MessageInput
       disabled={noModelsAllowed || !selectedModelKey || quota5hBlocked}
@@ -313,6 +328,8 @@ export default function ChatPage() {
       }
       onAttachFile={handleAttachFile}
       onSend={handleSend}
+      onStop={conversationId ? handleStop : undefined}
+      stopping={stopPending}
     />
   );
 

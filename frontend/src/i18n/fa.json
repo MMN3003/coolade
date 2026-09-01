@@ -127,7 +127,8 @@
     "fileDeleteConfirmTitle": "حذف فایل",
     "fileDeleteConfirmBody": "فایل «{{name}}» حذف شود؟ این عمل قابل بازگشت نیست.",
     "fileSize": "حجم",
-    "fileModified": "آخرین تغییر"
+    "fileModified": "آخرین تغییر",
+    "stopGeneration": "توقف تولید پاسخ"
   },
   "usage": {
     "title": "مصرف من",

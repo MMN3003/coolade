@@ -126,7 +126,8 @@
     "fileDeleteConfirmTitle": "Delete file",
     "fileDeleteConfirmBody": "Delete file “{{name}}”? This cannot be undone.",
     "fileSize": "Size",
-    "fileModified": "Last modified"
+    "fileModified": "Last modified",
+    "stopGeneration": "Stop generating"
   },
   "workspace": {
     "title": "Code Editor",

@@ -29,6 +29,11 @@ class TurnState:
     assistant_message_id: int
     events: list[dict[str, Any]] = field(default_factory=list)
     done: bool = False
+    # User-requested stop (POST …/stop): the background turn loop checks this
+    # between CLI events, breaks out, and finalizes as failed/stopped — the CLI
+    # subprocess is then terminated by the generator's finally. Partial text is
+    # preserved on the message row.
+    cancel_requested: bool = False
     condition: asyncio.Condition = field(default_factory=asyncio.Condition)
     created_at: float = field(default_factory=time.monotonic)
 

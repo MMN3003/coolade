@@ -219,6 +219,13 @@ async def _run_turn_background(
             resume_session_id=resume_session_id,
             thinking_level=thinking_level,
         ):
+            # User pressed stop: break out — the generator's finally terminates the
+            # CLI subprocess; the finally below persists partial text + stopped state.
+            if state.cancel_requested:
+                error_code = "stopped"
+                error_reason = "تولید پاسخ با درخواست شما متوقف شد."
+                await state.append({"event": "error", "data": {"message": error_reason, "code": "stopped"}})
+                break
             etype = ev["event"]
             if etype == "start":
                 session_id_captured = ev.get("session_id")
@@ -303,10 +310,31 @@ async def _run_turn_background(
                     msg.status = MessageStatus.failed
                     msg.error_code = error_code or "cli_error"
                     msg.error_reason = error_reason or "اجرای دستیار با خطا مواجه شد."
+                    # A user-stopped turn keeps whatever text already streamed —
+                    # the tokens were paid for; don't throw them away.
+                    if not msg.content and assistant_text_parts:
+                        msg.content = "".join(assistant_text_parts)
                     await sdb.commit()
         await state.mark_done()
         turn_registry.registry.finish(conversation_id, state)
         cli_runner.release_conversation(conversation_id)
+
+
+@router.post("/conversations/{conversation_id}/stop")
+async def stop_generation(
+    conversation_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """User-requested stop of the in-progress turn (saves tokens). Idempotent:
+    stopping an idle conversation is a no-op, not an error — the turn may have
+    just finished on its own."""
+    await _get_owned_conversation(db, user, conversation_id)
+    state = turn_registry.registry.get(conversation_id)
+    if state is None or state.done:
+        return {"ok": True, "stopped": False}
+    state.cancel_requested = True
+    return {"ok": True, "stopped": True}
 
 
 @router.post("/conversations/{conversation_id}/messages", response_model=TurnAcceptedOut, status_code=202)

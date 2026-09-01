@@ -257,6 +257,8 @@ export const conversationsApi = {
    */
   retryMessage: (id: number, messageId: number) =>
     api.post<SendMessageAccepted>(`/api/conversations/${id}/messages/${messageId}/retry`),
+  /** Stop the in-progress turn (idempotent; the stream then emits error/stopped). */
+  stopGeneration: (id: number) => api.post<{ ok: boolean; stopped: boolean }>(`/api/conversations/${id}/stop`),
   uploadAttachment: async (conversationId: number, file: File): Promise<AttachmentUploadResponse> => {
     const form = new FormData();
     form.append('file', file);

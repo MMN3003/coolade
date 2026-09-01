@@ -5,6 +5,7 @@ import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import CircularProgress from '@mui/material/CircularProgress';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import StopRoundedIcon from '@mui/icons-material/StopRounded';
 import AddIcon from '@mui/icons-material/Add';
 import { useTranslation } from 'react-i18next';
 import type { AttachmentUploadResponse } from '@/api/types';
@@ -18,6 +19,9 @@ interface Props {
   onRemovePendingAttachment: (id: number) => void;
   onAttachFile: (file: File) => void;
   onSend: (content: string) => void;
+  /** Stop the in-progress generation (send button morphs into a stop button). */
+  onStop?: () => void;
+  stopping?: boolean;
 }
 
 /**
@@ -34,6 +38,8 @@ export default function MessageInput({
   onRemovePendingAttachment,
   onAttachFile,
   onSend,
+  onStop,
+  stopping,
 }: Props) {
   const { t } = useTranslation();
   const [value, setValue] = useState('');
@@ -108,23 +114,45 @@ export default function MessageInput({
           disabled={disabled}
           sx={{ px: 0.5, py: 0.75, fontSize: '0.95rem' }}
         />
-        <Tooltip title={sending ? t('chat.chatBusy') : t('chat.send')}>
-          <span>
-            <IconButton
-              onClick={handleSend}
-              disabled={!canSend}
-              sx={{
-                mb: 0.25,
-                bgcolor: 'primary.main',
-                color: 'primary.contrastText',
-                '&:hover': { bgcolor: 'primary.dark' },
-                '&.Mui-disabled': { bgcolor: 'action.hover', color: 'text.disabled' },
-              }}
-            >
-              {sending ? <CircularProgress size={20} /> : <ArrowUpwardIcon />}
-            </IconButton>
-          </span>
-        </Tooltip>
+        {sending && onStop ? (
+          /* Generation in progress → the action button becomes STOP (saves tokens
+             on a mistaken prompt — product request 2026-09-01). */
+          <Tooltip title={t('chat.stopGeneration')}>
+            <span>
+              <IconButton
+                onClick={onStop}
+                disabled={stopping}
+                sx={{
+                  mb: 0.25,
+                  bgcolor: 'error.main',
+                  color: 'error.contrastText',
+                  '&:hover': { bgcolor: 'error.dark' },
+                  '&.Mui-disabled': { bgcolor: 'action.hover', color: 'text.disabled' },
+                }}
+              >
+                {stopping ? <CircularProgress size={20} /> : <StopRoundedIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        ) : (
+          <Tooltip title={sending ? t('chat.chatBusy') : t('chat.send')}>
+            <span>
+              <IconButton
+                onClick={handleSend}
+                disabled={!canSend}
+                sx={{
+                  mb: 0.25,
+                  bgcolor: 'primary.main',
+                  color: 'primary.contrastText',
+                  '&:hover': { bgcolor: 'primary.dark' },
+                  '&.Mui-disabled': { bgcolor: 'action.hover', color: 'text.disabled' },
+                }}
+              >
+                {sending ? <CircularProgress size={20} /> : <ArrowUpwardIcon />}
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
       </Box>
     </Box>
   );
