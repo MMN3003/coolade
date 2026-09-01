@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { CacheProvider } from '@emotion/react';
@@ -16,7 +16,8 @@ import 'highlight.js/styles/github-dark.css';
 
 import './i18n';
 import { rtlCache } from './theme/rtlCache';
-import { theme } from './theme/theme';
+import { makeTheme } from './theme/theme';
+import { useUiStore } from './store/uiStore';
 import App from './App';
 
 const queryClient = new QueryClient({
@@ -29,10 +30,18 @@ const queryClient = new QueryClient({
   },
 });
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
+/**
+ * Root wrapper: rebuilds the MUI theme whenever the persisted theme mode
+ * changes (uiStore, localStorage key `ecocode.theme`). The RTL emotion cache is
+ * mode-independent, so it stays fixed while only the ThemeProvider swaps.
+ */
+function Root() {
+  const themeMode = useUiStore((s) => s.themeMode);
+  const activeTheme = useMemo(() => makeTheme(themeMode), [themeMode]);
+
+  return (
     <CacheProvider value={rtlCache}>
-      <ThemeProvider theme={theme}>
+      <ThemeProvider theme={activeTheme}>
         <CssBaseline />
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
@@ -41,5 +50,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         </QueryClientProvider>
       </ThemeProvider>
     </CacheProvider>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <Root />
   </React.StrictMode>
 );

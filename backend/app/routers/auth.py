@@ -116,6 +116,16 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
 
     await db.commit()
 
+    # Effective thinking cap = min(global THINKING_MAX_LEVEL env, per-user cap).
+    # The per-user cap comes from the user's plan (User Plans / Tiers); NULL falls
+    # back to the global cap. effective_level(user_cap, user_cap) yields that min.
+    user_cap = user.max_thinking_level
+    max_thinking = (
+        thinking_service.effective_level(user_cap, user_cap).value
+        if user_cap is not None
+        else thinking_service.global_cap().value
+    )
+
     return MeResponse(
         id=user.id,
         username=user.username,
@@ -124,7 +134,7 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
         role=getattr(user.role, "value", user.role),
         auth_source=getattr(user.auth_source, "value", user.auth_source),
         allowed_models=allowed_models,
-        max_thinking_level=thinking_service.global_cap().value,
+        max_thinking_level=max_thinking,
         quota=MeQuotaSummary(
             period=getattr(quota.period, "value", quota.period),
             limit_credits=quota.limit_credits,

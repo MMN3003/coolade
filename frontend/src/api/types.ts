@@ -240,6 +240,14 @@ export interface WorkspaceFile {
   modified_at: string;
 }
 
+// اصلاحیهٔ ۶ / amendment 6: web editor (Monaco)
+export interface WorkspaceFileContent {
+  file_id: string;
+  relpath: string;
+  content: string;
+  truncated: boolean;
+}
+
 // ---------- teams + team shared memory (اصلاحیهٔ ۴ / Issue H+I) ----------
 //
 // NOT YET in openapi.json (still 1.3.0 on disk — no /api/teams*,
@@ -448,6 +456,9 @@ export interface AdminUser {
   auth_source: AuthSource;
   is_active: boolean;
   created_at: string;
+  /** User Plans / Tiers — the plan this user inherits from (null = no plan). */
+  plan_id: number | null;
+  plan_name: string | null;
 }
 
 /** Wire quota of UserDetailOut (QuotaOut) — note: NO used_credits here. */
@@ -485,6 +496,8 @@ export interface CreateUserRequest {
   email?: string | null;
   role: UserRole;
   auth_source: AuthSource;
+  /** User Plans / Tiers — apply this plan on create (quota + models + thinking cap). */
+  plan_id?: number | null;
 }
 
 export interface UpdateUserRequest {
@@ -493,6 +506,8 @@ export interface UpdateUserRequest {
   password?: string;
   display_name?: string;
   email?: string;
+  /** present-and-non-null re-applies that plan; present-and-null clears the association. */
+  plan_id?: number | null;
 }
 
 // ---------- admin: policy & quota ----------
@@ -561,6 +576,72 @@ export interface UpdateModelRequest {
   cache_read_weight?: number;
   is_enabled?: boolean;
   sort_order?: number;
+}
+
+// ---------- admin: plans (User Plans / Tiers) ----------
+
+/** GET/POST/PATCH /api/admin/plans wire item. `model_ids` are Model.id values. */
+export interface PlanWire {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  period: QuotaPeriod;
+  limit_credits: DecimalString;
+  /** null = no rolling 5h cap. */
+  limit_credits_5h: DecimalString | null;
+  max_thinking_level: ThinkingLevel;
+  is_active: boolean;
+  sort_order: number;
+  model_ids: number[];
+  member_count: number;
+  created_at: string;
+}
+
+export interface Plan {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  period: QuotaPeriod;
+  limit_credits: number;
+  limit_credits_5h: number | null;
+  max_thinking_level: ThinkingLevel;
+  is_active: boolean;
+  sort_order: number;
+  model_ids: number[];
+  member_count: number;
+  created_at: string;
+}
+
+/**
+ * POST /api/admin/plans body. `slug` is auto-generated from `name` server-side
+ * (uniquified), so the create dialog never sends it. null/omitted `limit_credits_5h`
+ * = no 5h cap.
+ */
+export interface CreatePlanRequest {
+  name: string;
+  description?: string | null;
+  period?: QuotaPeriod;
+  limit_credits: number;
+  limit_credits_5h?: number | null;
+  max_thinking_level?: ThinkingLevel;
+  is_active?: boolean;
+  sort_order?: number;
+  model_ids?: number[];
+}
+
+/** PATCH /api/admin/plans/{id} body — all fields optional (partial update). */
+export interface UpdatePlanRequest {
+  name?: string;
+  description?: string | null;
+  period?: QuotaPeriod;
+  limit_credits?: number;
+  limit_credits_5h?: number | null;
+  max_thinking_level?: ThinkingLevel;
+  is_active?: boolean;
+  sort_order?: number;
+  model_ids?: number[];
 }
 
 // ---------- admin: org usage & audit ----------

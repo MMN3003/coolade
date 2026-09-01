@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import client_ip, get_db, require_admin
 from app.errors import bad_request, not_found
-from app.models import ApiKey, Model, ModelPolicy, Quota, QuotaPeriod, User, UsageLedger
+from app.models import ApiKey, Model, ModelPolicy, Plan, Quota, QuotaPeriod, User, UsageLedger
 from app.schemas import (
     AdminUserUsageResponse,
     FiveHourQuotaBlock,
@@ -31,10 +31,32 @@ from app.schemas import (
 )
 from app.security import hash_password
 from app.services.audit import record_audit
-from app.services.litellm_client import litellm_client
+from app.services.plans import apply_plan_to_user
 from app.services.quota import get_5h_window_state, get_or_create_quota, get_used_credits, period_length
 
 router = APIRouter(prefix="/api/admin/users", tags=["admin-users"])
+
+
+async def _plan_name(db: AsyncSession, plan_id: int | None) -> str | None:
+    if plan_id is None:
+        return None
+    plan = await db.get(Plan, plan_id)
+    return plan.name if plan else None
+
+
+def _user_out(user: User, plan_name: str | None) -> UserOut:
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        display_name=user.display_name,
+        email=user.email,
+        role=getattr(user.role, "value", user.role),
+        auth_source=getattr(user.auth_source, "value", user.auth_source),
+        is_active=user.is_active,
+        created_at=user.created_at,
+        plan_id=user.plan_id,
+        plan_name=plan_name,
+    )
 
 
 async def _user_detail(db: AsyncSession, user: User) -> UserDetailOut:
@@ -67,6 +89,8 @@ async def _user_detail(db: AsyncSession, user: User) -> UserDetailOut:
         auth_source=getattr(user.auth_source, "value", user.auth_source),
         is_active=user.is_active,
         created_at=user.created_at,
+        plan_id=user.plan_id,
+        plan_name=await _plan_name(db, user.plan_id),
         allowed_models=allowed_models,
         quota=quota,
     )
@@ -74,8 +98,10 @@ async def _user_detail(db: AsyncSession, user: User) -> UserDetailOut:
 
 @router.get("", response_model=list[UserOut])
 async def list_users(admin: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> list[UserOut]:
-    result = await db.execute(select(User).order_by(User.created_at))
-    return list(result.scalars().all())
+    result = await db.execute(
+        select(User, Plan.name).outerjoin(Plan, Plan.id == User.plan_id).order_by(User.created_at)
+    )
+    return [_user_out(user, plan_name) for user, plan_name in result.all()]
 
 
 @router.post("", response_model=UserOut)
@@ -104,12 +130,20 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
 
+    # User Plans / Tiers: inherit the chosen plan (quota + models + thinking cap).
+    if body.plan_id is not None:
+        plan = await db.get(Plan, body.plan_id)
+        if not plan:
+            raise bad_request("پلن انتخاب‌شده یافت نشد.")
+        await apply_plan_to_user(db, user, plan)
+
     await record_audit(
         db, actor_id=admin.id, action="user.create", target_id=user.id,
-        detail={"username": user.username}, ip_address=ip,
+        detail={"username": user.username, "plan_id": user.plan_id}, ip_address=ip,
     )
     await db.commit()
-    return user
+    await db.refresh(user)
+    return _user_out(user, await _plan_name(db, user.plan_id))
 
 
 @router.get("/{user_id}", response_model=UserDetailOut)
@@ -149,18 +183,24 @@ async def update_user(
         keys = await db.execute(select(ApiKey).where(ApiKey.user_id == user.id, ApiKey.is_active.is_(True)))
         for key in keys.scalars():
             key.is_active = False
-            if key.litellm_key_id:
-                try:
-                    await litellm_client.key_delete(key.litellm_key_id)
-                except Exception:
-                    pass
         await record_audit(
             db, actor_id=admin.id, action="user.disable", target_id=user.id, ip_address=ip
         )
 
+    # User Plans / Tiers: present-and-non-null re-applies the plan; present-and-null
+    # clears the association (keeping the user's current quota/policy).
+    if "plan_id" in body.model_fields_set:
+        if body.plan_id is None:
+            user.plan_id = None
+        else:
+            plan = await db.get(Plan, body.plan_id)
+            if not plan:
+                raise bad_request("پلن انتخاب‌شده یافت نشد.")
+            await apply_plan_to_user(db, user, plan)
+
     await db.commit()
     await db.refresh(user)
-    return user
+    return _user_out(user, await _plan_name(db, user.plan_id))
 
 
 @router.delete("/{user_id}")
@@ -173,13 +213,6 @@ async def delete_user(
     user = await db.get(User, user_id)
     if not user:
         raise not_found("کاربر یافت نشد.")
-    keys = await db.execute(select(ApiKey).where(ApiKey.user_id == user.id, ApiKey.is_active.is_(True)))
-    for key in keys.scalars():
-        if key.litellm_key_id:
-            try:
-                await litellm_client.key_delete(key.litellm_key_id)
-            except Exception:
-                pass
     await record_audit(db, actor_id=admin.id, action="user.delete", target_id=user.id, ip_address=ip)
     await db.delete(user)
     await db.commit()
@@ -208,14 +241,6 @@ async def set_policy(
     await db.execute(delete(ModelPolicy).where(ModelPolicy.user_id == user_id))
     for m in models:
         db.add(ModelPolicy(user_id=user_id, model_id=m.id))
-
-    keys = await db.execute(select(ApiKey).where(ApiKey.user_id == user_id, ApiKey.is_active.is_(True)))
-    for key in keys.scalars():
-        if key.litellm_key_id:
-            try:
-                await litellm_client.key_update(key.litellm_key_id, models=list(found_keys))
-            except Exception:
-                pass
 
     await record_audit(
         db, actor_id=admin.id, action="policy.change", target_id=user_id,

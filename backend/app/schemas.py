@@ -203,6 +203,8 @@ class UserCreate(BaseModel):
     role: Literal["admin", "user"] = "user"
     auth_source: Literal["local", "ldap"] = "local"
     password: str | None = None
+    # User Plans / Tiers: if set, the plan is applied on create (quota + models + thinking cap).
+    plan_id: int | None = None
 
 
 class UserUpdate(BaseModel):
@@ -211,6 +213,9 @@ class UserUpdate(BaseModel):
     role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
     password: str | None = None
+    # User Plans / Tiers: present-and-non-null re-applies that plan; present-and-null clears
+    # the plan association (leaving the user's current quota/policy untouched).
+    plan_id: int | None = None
 
 
 class UserOut(ORMModel):
@@ -222,6 +227,8 @@ class UserOut(ORMModel):
     auth_source: str
     is_active: bool
     created_at: datetime.datetime
+    plan_id: int | None = None
+    plan_name: str | None = None
 
 
 class QuotaOut(BaseModel):
@@ -285,6 +292,49 @@ class ModelOut(ORMModel):
     cache_read_weight: Decimal
     is_enabled: bool
     sort_order: int
+
+
+# ---------- Admin: plans (User Plans / Tiers) ----------
+class PlanCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    slug: str | None = None  # generated from name if absent; uniquified either way
+    description: str | None = None
+    period: Literal["daily", "weekly", "monthly"] = "monthly"
+    limit_credits: Decimal
+    limit_credits_5h: Decimal | None = None
+    max_thinking_level: ThinkingLevelLiteral = "standard"
+    is_active: bool = True
+    sort_order: int = 0
+    model_ids: list[int] = []
+
+
+class PlanUpdate(BaseModel):
+    name: str | None = None
+    slug: str | None = None
+    description: str | None = None
+    period: Literal["daily", "weekly", "monthly"] | None = None
+    limit_credits: Decimal | None = None
+    limit_credits_5h: Decimal | None = None
+    max_thinking_level: ThinkingLevelLiteral | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+    model_ids: list[int] | None = None
+
+
+class PlanOut(BaseModel):
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    period: str
+    limit_credits: Decimal
+    limit_credits_5h: Decimal | None = None
+    max_thinking_level: str
+    is_active: bool
+    sort_order: int
+    model_ids: list[int] = []
+    member_count: int = 0
+    created_at: datetime.datetime
 
 
 # ---------- Admin: audit ----------
@@ -355,6 +405,19 @@ class WorkspaceFileOut(BaseModel):
     relpath: str
     size_bytes: int
     modified_at: datetime.datetime
+
+
+# اصلاحیهٔ ۶ / amendment 6: web editor (Monaco) read + save
+class WorkspaceFileContentOut(BaseModel):
+    file_id: str
+    relpath: str
+    content: str
+    truncated: bool = False
+
+
+class WorkspaceFileSaveIn(BaseModel):
+    relpath: str
+    content: str
 
 
 # ---------- Teams (اصلاحیهٔ ۴ / Issue H+I) ----------

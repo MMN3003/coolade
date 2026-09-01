@@ -94,6 +94,17 @@ class User(Base):
     )
     password_hash: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # v2 — per-user total disk quota across workspaces + chat files (TECH-V2 §2.6). NULL = unlimited.
+    disk_quota_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    # User Plans / Tiers: the plan this user inherits from (NULL = no plan). Applying
+    # a plan rewrites this user's Quota + ModelPolicy rows + max_thinking_level;
+    # manual per-user edits afterwards override until the plan is re-applied.
+    plan_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("plans.id", ondelete="SET NULL")
+    )
+    # Per-user cap for the web-chat thinking-level picker (NULL = fall back to the
+    # global THINKING_MAX_LEVEL env cap). Set from the plan on inheritance.
+    max_thinking_level: Mapped[ThinkingLevel | None] = mapped_column(thinking_level_enum)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -160,6 +171,8 @@ class ApiKey(Base):
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
     key_hash: Mapped[str] = mapped_column(Text, nullable=False)
     litellm_key_id: Mapped[str | None] = mapped_column(Text)
+    # v2 — 'claude_code' (raw relay) | 'flatten' (legacy). TECH-V2 §4.1.
+    mode: Mapped[str] = mapped_column(String(20), nullable=False, default="claude_code")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_used_at: Mapped[datetime.datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -202,6 +215,48 @@ class ModelPolicy(Base):
     )
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Plan(Base):
+    """User Plans / Tiers — an admin-defined bundle of quota + allowed models +
+    thinking cap. Users pick a plan on create/edit and inherit it (see
+    app/services/plans.py::apply_plan_to_user). Editing a plan can be re-applied to
+    all its members via POST /api/admin/plans/{id}/apply."""
+
+    __tablename__ = "plans"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(150), nullable=False, unique=True)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    period: Mapped[QuotaPeriod] = mapped_column(
+        quota_period_enum, nullable=False, default=QuotaPeriod.monthly
+    )
+    limit_credits: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    # NULL = no rolling 5h cap (same semantics as Quota.limit_credits_5h).
+    limit_credits_5h: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    max_thinking_level: Mapped[ThinkingLevel] = mapped_column(
+        thinking_level_enum, nullable=False, default=ThinkingLevel.standard
+    )
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class PlanModel(Base):
+    """Which models a plan grants — mirrors ModelPolicy but keyed on plan, not user.
+    On inheritance these rows are copied into the user's ModelPolicy rows."""
+
+    __tablename__ = "plan_models"
+
+    plan_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("plans.id", ondelete="CASCADE"), primary_key=True
+    )
+    model_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("models.id", ondelete="CASCADE"), primary_key=True
     )
 
 
@@ -392,6 +447,65 @@ class UpstreamAccountLimit(Base):
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
     upstream_request_id: Mapped[str | None] = mapped_column(String(100))
+
+
+class Workspace(Base):
+    """v2 — persistent per-(user × repo) coding workspace (TECH-V2 §2/§4.2).
+
+    A workspace = an isolated Docker volume + a stop/start-able container that hosts
+    code-server + the Claude Code extension. `status` tracks the lifecycle
+    (provisioning→running→stopped→…); the container/volume names are derived from id.
+    `kind='personal'` workspaces have no repo (general-chat shell).
+    """
+
+    __tablename__ = "workspaces"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="repo")  # repo | personal
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="provisioning")
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    repo_url: Mapped[str | None] = mapped_column(Text)
+    base_branch: Mapped[str | None] = mapped_column(String(200))
+    work_branch: Mapped[str | None] = mapped_column(String(200))
+    container_name: Mapped[str | None] = mapped_column(String(120))
+    volume_name: Mapped[str | None] = mapped_column(String(120))
+    # sha256 of the per-workspace gateway key injected into the container as
+    # ANTHROPIC_AUTH_TOKEN; the raw relay authenticates model calls against this (D2.4).
+    gateway_key_hash: Mapped[str | None] = mapped_column(Text)
+    disk_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_activity_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("idx_ws_user", "user_id"), Index("idx_ws_status", "status"))
+
+
+class GitlabToken(Base):
+    """v2 — a developer's own GitLab PAT (TECH-V2 §4.3). Stored Fernet-encrypted;
+    used only to clone/push inside that user's own workspace sandbox."""
+
+    __tablename__ = "gitlab_tokens"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    token_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    gitlab_host: Mapped[str] = mapped_column(String(200), nullable=False, default="git.ecobin.ir")
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class Setting(Base):

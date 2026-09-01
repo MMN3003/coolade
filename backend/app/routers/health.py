@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import shutil
 
-import httpx
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,13 +33,10 @@ async def health(db: AsyncSession = Depends(get_db)) -> HealthOut:
     except Exception:
         db_ok = False
 
+    # اصلاحیهٔ ۵ / amendment 5: LiteLLM is no longer part of the stack (both surfaces
+    # run through the Claude Code CLI). The `litellm` health field is kept as a legacy
+    # constant so the schema/admin UI stay valid; it no longer probes any service.
     litellm_ok = True
-    try:
-        async with httpx.AsyncClient(timeout=3) as client:
-            resp = await client.get(f"{settings.litellm_base_url}/health/liveliness")
-            litellm_ok = resp.status_code < 500
-    except Exception:
-        litellm_ok = False
 
     mode = await _effective_mode(db) if db_ok else settings.upstream_mode
     if mode == "mock":

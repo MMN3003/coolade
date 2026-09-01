@@ -13,11 +13,14 @@ export default function ModelPicker({
   value,
   onChange,
   disabled,
+  pill,
 }: {
   models: string[];
   value: string | null;
   onChange: (modelKey: string) => void;
   disabled?: boolean;
+  /** Render as a rounded, borderless-ish "pill" (GapGPT centered model chip). */
+  pill?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -25,15 +28,27 @@ export default function ModelPicker({
     onChange(e.target.value);
   }
 
+  const pillSx = pill
+    ? {
+        borderRadius: 999,
+        bgcolor: 'action.hover',
+        fontWeight: 600,
+        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+        '& .MuiSelect-select': { direction: 'ltr', py: 0.75 },
+      }
+    : { '& .MuiSelect-select': { direction: 'ltr' } };
+
   return (
-    <FormControl size="small" sx={{ minWidth: 200 }}>
+    <FormControl size="small" sx={{ minWidth: pill ? 160 : 200 }}>
       <Select
         value={value ?? ''}
         onChange={handleChange}
         displayEmpty
         disabled={disabled || models.length === 0}
         renderValue={(v) => (v ? v : t('chat.selectModel'))}
-        sx={{ '& .MuiSelect-select': { direction: 'ltr' } }}
+        sx={pillSx}
       >
         {models.map((key) => (
           <MenuItem key={key} value={key} sx={{ direction: 'ltr' }}>

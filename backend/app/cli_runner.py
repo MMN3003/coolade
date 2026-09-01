@@ -543,3 +543,49 @@ async def run_conversation_turn(
                 resume,
             )
             resume = None
+
+
+async def run_oneshot_turn(
+    *,
+    user_id: int,
+    upstream_model: str,
+    prompt: str,
+    thinking_level: ThinkingLevel = ThinkingLevel.off,
+) -> AsyncIterator[dict[str, Any]]:
+    """Stateless single-shot CLI turn for the API-key passthrough surface
+    (اصلاحیهٔ ۵ / amendment 5: /v1/* now runs through the Claude Code CLI, not
+    LiteLLM — so both surfaces share the same upstream identity and the OAuth
+    subscription's "must look like Claude Code" gate is satisfied uniformly,
+    which is what made opus/sonnet return 429 on the old passthrough path).
+
+    Unlike run_conversation_turn there is NO conversation, NO --resume/session
+    persistence, and NO per-conversation busy lock: each API request is
+    independent and the client is expected to carry its own history in the
+    request body (the caller flattens it into `prompt`). Team memory is not
+    mounted on this surface. Concurrency is still bounded by the shared global
+    _semaphore. Yields the same normalized events (start/delta/tool/done/error)
+    as run_conversation_turn so the caller can reshape them into the OpenAI /
+    Anthropic wire formats the API client expects."""
+    ws = workspace_dir(user_id)
+    env = await _build_env(thinking_level)
+    # Account 5h reset hint for the actionable upstream-429 message (parity with
+    # run_conversation_turn) — read once up front; the CLI turn itself has no DB.
+    reset_hint: str | None = None
+    try:
+        from app.services import account_limits
+
+        async with async_session_factory() as db:
+            reset_hint = await account_limits.get_5h_reset_hint(db)
+    except Exception:  # pragma: no cover - telemetry only, never block a turn
+        reset_hint = None
+    async with _semaphore:
+        cmd = _build_command(prompt, upstream_model, None, None)
+        async for ev in _run_process(
+            cmd,
+            cwd=ws,
+            env=env,
+            timeout=settings.cli_timeout_seconds,
+            upstream_model=upstream_model,
+            reset_hint=reset_hint,
+        ):
+            yield ev

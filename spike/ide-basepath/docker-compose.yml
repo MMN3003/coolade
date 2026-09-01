@@ -1,0 +1,53 @@
+# Spike §۳ + §۳.۷ — code-server on a sub-path, PLUS the Claude Code extension
+# authenticating through our raw relay (no upstream token in the workspace).
+#
+#   docker compose -f spike/ide-basepath/docker-compose.yml up -d --build
+#   open http://127.0.0.1:8099/ide/spike/
+name: eco-ide-spike
+
+services:
+  code-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080",
+              "--disable-telemetry", "--disable-update-check", "/home/coder/project"]
+    environment:
+      # The Claude Code extension drives the `claude` CLI, which reads these — so
+      # the extension authenticates through OUR relay with a per-workspace gateway
+      # key, and the real upstream token never enters this container (TECH-V2 D2.4).
+      ANTHROPIC_BASE_URL: http://relay:8899
+      ANTHROPIC_AUTH_TOKEN: eco-workspace-spike-key
+      CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1"
+    expose:
+      - "8080"
+    networks: [ide_spike]
+
+  relay:
+    image: python:3.12-slim
+    command: ["python", "/spike/relay_spike.py", "8899"]
+    environment:
+      RELAY_CREDS: /creds/.credentials.json
+      RELAY_HOST: 0.0.0.0
+      RELAY_LOG: /tmp/relay.log          # spike/ is mounted read-only; log to tmpfs
+    volumes:
+      - claude_state:/creds:ro          # backend's rotated OAuth creds (valid token)
+      - ../:/spike:ro                    # relay_spike.py lives in spike/
+    networks: [ide_spike]
+
+  nginx:
+    image: nginx:alpine
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "127.0.0.1:8099:80"
+    networks: [ide_spike]
+    depends_on: [code-server]
+
+networks:
+  ide_spike:
+
+volumes:
+  claude_state:
+    external: true
+    name: ecocode_claude_state

@@ -16,6 +16,7 @@ from app.errors import AppError, app_error_handler, unhandled_error_handler, val
 from app.internal import router as internal_router
 from app.routers import (
     admin_models,
+    admin_plans,
     admin_teams,
     admin_upstream,
     admin_usage,
@@ -24,10 +25,11 @@ from app.routers import (
     conversations,
     health,
     keys,
-    passthrough,
+    relay,
     teams,
     usage,
     workspace,
+    workspaces_v2,
 )
 from app.scheduler import start_scheduler
 from app.seed import run_seed
@@ -112,13 +114,17 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(workspace.router)
+app.include_router(workspaces_v2.router)
 app.include_router(teams.router)
 app.include_router(keys.router)
 app.include_router(usage.router)
-app.include_router(passthrough.router)
+# v2 — the old CLI-wrapping web service (/v1 passthrough for Cline) is removed
+# (PRD-V2 L1/decision-2). Only the raw relay (/relay/v1) remains for agents.
+app.include_router(relay.router)
 app.include_router(admin_users.router)
 app.include_router(admin_teams.router)
 app.include_router(admin_models.router)
+app.include_router(admin_plans.router)
 app.include_router(admin_usage.router)
 app.include_router(admin_upstream.router)
 app.include_router(internal_router)

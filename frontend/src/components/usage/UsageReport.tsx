@@ -193,8 +193,8 @@ export default function UsageReport({ weekly, fiveHour, daily, byModel, byKey }:
               </TableHead>
               <TableBody>
                 {byKey.map((k) => (
-                  <TableRow key={k.api_key_id ?? 'web'}>
-                    <TableCell>{k.api_key_id === null ? t('usage.webChat') : k.name}</TableCell>
+                  <TableRow key={k.api_key_id ?? k.name}>
+                    <TableCell>{k.name}</TableCell>
                     <TableCell align="left">{formatCredits(k.credits)}</TableCell>
                   </TableRow>
                 ))}

@@ -1,4 +1,18 @@
-"""API-key passthrough — always direct HTTP through LiteLLM (TECH.md section 5.2, amendment 1)."""
+"""API-key passthrough surface.
+
+اصلاحیهٔ ۵ / amendment 5: this path no longer goes through LiteLLM. Every request
+now runs as a stateless single-shot Claude Code CLI turn (cli_runner.run_oneshot_turn),
+exactly like the web-chat surface — so both surfaces share the same upstream
+identity. That is what removes the opus/sonnet 429: the OAuth subscription token
+requires requests to carry the Claude Code identity, which the CLI always sends
+and the old raw LiteLLM relay did not.
+
+The wire contract to API clients is unchanged: `/v1/messages` speaks the Anthropic
+Messages shape and `/v1/chat/completions` speaks the OpenAI Chat shape (both stream
+and non-stream). The client's own multi-turn history is flattened into a single
+prompt (the CLI's `-p` takes one prompt); client-supplied tool definitions are not
+bridged to the CLI on this surface (documented limitation, TECH.md 5.2/5.5).
+"""
 from __future__ import annotations
 
 import datetime
@@ -12,82 +26,27 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import cli_runner
 from app.db import async_session_factory
 from app.deps import ApiKeyPrincipal, client_ip, get_api_key_principal, get_db
-from app.errors import AppError, bad_request, model_not_allowed, upstream_rate_limited
-from app.internal import pop_usage_report
+from app.errors import AppError, bad_request, model_not_allowed
 from app.models import Model, ModelPolicy
-from app.services import account_limits, ledger
-from app.services.litellm_client import UpstreamServiceError, litellm_client
+from app.services import ledger
 from app.services.quota import check_quota
-from app.services.sse import iter_sse_json
 
 router = APIRouter(prefix="/v1", tags=["passthrough"])
 
-# Upstream HTTP status → (code, پیام) shown to the API client. Anything outside
-# this map (litellm's own 500s, unexpected codes) becomes a 502 upstream_error.
-# NOTE: 429 is handled separately in _upstream_error (model-aware, actionable
-# message — product-owner follow-up, 2026-08-22) and intentionally absent here.
-_UPSTREAM_ERRORS: dict[int, tuple[str, str]] = {
-    401: ("upstream_auth_error", "احراز هویت نزد سرویس بالادستی ناموفق بود؛ تنظیمات اعتبارنامه را بررسی کنید."),
-    403: ("upstream_forbidden", "سرویس بالادستی این درخواست را مجاز نمی‌داند."),
-    404: ("upstream_not_found", "مدل یا مسیر درخواستی در سرویس بالادستی یافت نشد."),
-    529: ("upstream_overloaded", "سرویس بالادستی زیر بار سنگین است؛ کمی بعد دوباره تلاش کنید."),
-}
 
-
-async def _upstream_error(
-    db: AsyncSession, exc: UpstreamServiceError, model_key: str | None = None
-) -> AppError:
-    if exc.status_code == 429:
-        # Product-owner decision (2026-08-22): keep the model, no auto-substitution —
-        # just make the message actionable (name the model + a lighter suggestion +
-        # the account's 5h reset time when we know it, Issue F state).
-        reset_hint = await account_limits.get_5h_reset_hint(db)
-        return upstream_rate_limited(model=model_key, reset_at=reset_hint)
-    if exc.status_code in _UPSTREAM_ERRORS:
-        code, message = _UPSTREAM_ERRORS[exc.status_code]
-        return AppError(exc.status_code, code, message)
-    return AppError(502, "upstream_error", "خطا در ارتباط با سرویس بالادستی رخ داد.")
-
-
-async def _open_upstream_stream(body: dict[str, Any]) -> AsyncIterator[bytes]:
-    """Connect to litellm's SSE stream and fail fast with the upstream status.
-
-    litellm reports errors that happen after its StreamingResponse starts as
-    HTTP 200 plus a single `data: {"error": ..., "code": "429"}` event, so peek
-    at the first complete event before we commit to our own 200 stream.
-    """
-    stream = litellm_client.stream_chat("/chat/completions", body)
-    head = b""
-    while b"\n\n" not in head and len(head) < 16384:
-        try:
-            head += await anext(stream)
-        except StopAsyncIteration:
-            break
-    for line in head.split(b"\n\n", 1)[0].split(b"\n"):
-        line = line.strip()
-        if not line.startswith(b"data:"):
-            continue
-        try:
-            obj = json.loads(line[len(b"data:") :].strip())
-        except json.JSONDecodeError:
-            continue
-        err = obj.get("error") if isinstance(obj, dict) else None
-        if isinstance(err, dict):
-            try:
-                status_code = int(err.get("code") or 500)
-            except (TypeError, ValueError):
-                status_code = 500
-            raise UpstreamServiceError(status_code, str(err.get("message") or "")[:500])
-
-    async def _chained() -> AsyncIterator[bytes]:
-        if head:
-            yield head
-        async for chunk in stream:
-            yield chunk
-
-    return _chained()
+def _api_error_from_event(ev: dict[str, Any]) -> AppError:
+    """Map a normalized cli_runner error event → an HTTP AppError with the same
+    Persian message the web-chat surface uses (shared via cli_runner's classifier)."""
+    code = ev.get("code") or "upstream_error"
+    message = ev.get("message") or "خطا در ارتباط با سرویس بالادستی رخ داد."
+    if code in ("upstream_rate_limited", "quota_exceeded", "quota_exceeded_5h"):
+        return AppError(429, code, message)
+    if code == "timeout":
+        return AppError(504, "upstream_timeout", message)
+    return AppError(502, code, message)
 
 
 async def _load_and_check_model(db: AsyncSession, user_id: int, model_key: str) -> Model:
@@ -103,86 +62,99 @@ async def _load_and_check_model(db: AsyncSession, user_id: int, model_key: str) 
     return model
 
 
-def _anthropic_to_openai(body: dict[str, Any]) -> dict[str, Any]:
-    messages: list[dict[str, str]] = []
+def _content_to_text(content: Any) -> str:
+    """Flatten an OpenAI/Anthropic message `content` (str or block list) to plain text."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for b in content:
+            if isinstance(b, dict):
+                # OpenAI blocks use {"type":"text","text":...}; Anthropic text blocks the same.
+                if b.get("type") in (None, "text") and b.get("text"):
+                    parts.append(b["text"])
+        return "\n".join(parts)
+    return "" if content is None else str(content)
+
+
+def _anthropic_messages_to_prompt(body: dict[str, Any]) -> str:
+    parts: list[str] = []
     system = body.get("system")
     if system:
-        text = system if isinstance(system, str) else "\n".join(
-            b.get("text", "") for b in system if isinstance(b, dict)
-        )
-        messages.append({"role": "system", "content": text})
+        parts.append(_content_to_text(system))
     for m in body.get("messages", []):
-        content = m.get("content")
-        if isinstance(content, list):
-            text = "\n".join(
-                b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
-            )
+        text = _content_to_text(m.get("content"))
+        if not text:
+            continue
+        role = m.get("role", "user")
+        parts.append(text if role == "user" else f"{role.capitalize()}: {text}")
+    return "\n\n".join(p for p in parts if p)
+
+
+def _openai_messages_to_prompt(body: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for m in body.get("messages", []):
+        text = _content_to_text(m.get("content"))
+        if not text:
+            continue
+        role = m.get("role", "user")
+        if role == "system":
+            parts.append(text)
+        elif role == "user":
+            parts.append(text)
         else:
-            text = content
-        messages.append({"role": m.get("role", "user"), "content": text})
+            parts.append(f"{role.capitalize()}: {text}")
+    return "\n\n".join(p for p in parts if p)
 
-    openai_body: dict[str, Any] = {
-        "model": body["model"],
-        "messages": messages,
-        "stream": bool(body.get("stream", False)),
+
+async def _record_api_usage(
+    *, user_id: int, api_key_id: int | None, model_id: int, request_id: str, usage: dict[str, Any]
+) -> dict[str, int]:
+    resolved = {
+        "input_tokens": int(usage.get("input_tokens", 0) or 0),
+        "output_tokens": int(usage.get("output_tokens", 0) or 0),
+        "cache_read_tokens": int(usage.get("cache_read_tokens", 0) or 0),
+        "cache_write_tokens": int(usage.get("cache_write_tokens", 0) or 0),
     }
-    if "max_tokens" in body:
-        openai_body["max_tokens"] = body["max_tokens"]
-    if "temperature" in body:
-        openai_body["temperature"] = body["temperature"]
-    # Issue D (asymmetric vs. web chat, TECH.md 5.2): the API-key surface owns its own
-    # thinking control — the client's `thinking` field (Anthropic shape, e.g.
-    # {"type":"enabled","budget_tokens":N}) is forwarded UNCHANGED. We never inject it
-    # on the chat's behalf here, and never strip it either.
-    #
-    # `allowed_openai_params` is required alongside it: our litellm_config.yaml keeps
-    # `drop_params: true` gateway-wide (a real safety net — unrelated unsupported
-    # params from arbitrary tools should be dropped, not 400 the whole request), and
-    # litellm doesn't know our custom "ecocode-upstream" provider supports `thinking`
-    # at all, so without this per-request opt-in it either silently drops the field
-    # (drop_params: true) or raises UnsupportedParamsError (drop_params: false) —
-    # confirmed against the live litellm proxy while implementing this. This is the
-    # officially documented per-request escape hatch, not a global relaxation.
-    if "thinking" in body:
-        openai_body["thinking"] = body["thinking"]
-        openai_body["allowed_openai_params"] = ["thinking"]
-    return openai_body
-
-
-async def _record_ledger(
-    *, user_id: int, api_key_id: int | None, model: Model, surface: str, request_id: str, fallback_usage: dict
-) -> dict:
-    reported = pop_usage_report(request_id)
-    if reported:
-        usage = {
-            "input_tokens": reported["input_tokens"],
-            "output_tokens": reported["output_tokens"],
-            "cache_read_tokens": reported["cache_read_tokens"],
-            "cache_write_tokens": reported["cache_write_tokens"],
-        }
-    else:
-        usage = {
-            "input_tokens": fallback_usage.get("prompt_tokens", 0) or 0,
-            "output_tokens": fallback_usage.get("completion_tokens", 0) or 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0,
-        }
     async with async_session_factory() as sdb:
-        m = await sdb.get(Model, model.id)
+        m = await sdb.get(Model, model_id)
         await ledger.record_usage(
             sdb,
             user_id=user_id,
             model=m,
-            surface=surface,
-            input_tokens=usage["input_tokens"],
-            output_tokens=usage["output_tokens"],
-            cache_read_tokens=usage["cache_read_tokens"],
-            cache_write_tokens=usage["cache_write_tokens"],
+            surface="api",
+            input_tokens=resolved["input_tokens"],
+            output_tokens=resolved["output_tokens"],
+            cache_read_tokens=resolved["cache_read_tokens"],
+            cache_write_tokens=resolved["cache_write_tokens"],
             api_key_id=api_key_id,
             request_id=request_id,
         )
         await sdb.commit()
-    return usage
+    return resolved
+
+
+async def _peek_cli_stream(
+    gen: AsyncIterator[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], AsyncIterator[dict[str, Any]]]:
+    """Advance the CLI turn until the first text delta (or a terminal event), so an
+    error that arrives before any output surfaces as a real HTTP status instead of an
+    empty 200 stream (fail-fast, parity with the old LiteLLM peek). Raises AppError
+    if an `error` event arrives before any delta. Returns (buffered_events, gen) where
+    the caller replays buffered_events then keeps consuming gen."""
+    buffered: list[dict[str, Any]] = []
+    async for ev in gen:
+        e = ev.get("event")
+        if e == "delta":
+            buffered.append(ev)
+            return buffered, gen
+        if e == "error":
+            raise _api_error_from_event(ev)
+        if e == "done":
+            buffered.append(ev)
+            return buffered, gen
+        # start / tool events: not forwarded to API clients, keep advancing.
+    return buffered, gen
 
 
 @router.get("/models")
@@ -218,48 +190,49 @@ async def anthropic_messages(
     await db.commit()
 
     request_id = uuid.uuid4().hex
-    openai_body = _anthropic_to_openai(body)
-    openai_body["extra_headers"] = {"x-ecocode-request-id": request_id}
+    prompt = _anthropic_messages_to_prompt(body)
     stream = bool(body.get("stream", False))
     user_id = principal.user.id
     api_key_id = principal.api_key.id
+    model_id = model.id
+    model_key = body["model"]
     msg_id = f"msg_{uuid.uuid4().hex[:24]}"
 
+    gen = cli_runner.run_oneshot_turn(
+        user_id=user_id, upstream_model=model.upstream_model, prompt=prompt
+    )
+
     if not stream:
-        try:
-            resp = await litellm_client.call_chat("/chat/completions", openai_body)
-        except UpstreamServiceError as exc:
-            raise await _upstream_error(db, exc, model.model_key)
-        choice = (resp.get("choices") or [{}])[0]
-        text = ((choice.get("message") or {}).get("content")) or ""
-        usage = resp.get("usage") or {}
-        await _record_ledger(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            model=model,
-            surface="api",
-            request_id=request_id,
-            fallback_usage=usage,
+        text_parts: list[str] = []
+        usage: dict[str, Any] = {}
+        async for ev in gen:
+            e = ev.get("event")
+            if e == "delta":
+                text_parts.append(ev.get("text", ""))
+            elif e == "error":
+                raise _api_error_from_event(ev)
+            elif e == "done":
+                usage = ev.get("usage") or {}
+        recorded = await _record_api_usage(
+            user_id=user_id, api_key_id=api_key_id, model_id=model_id,
+            request_id=request_id, usage=usage,
         )
         return JSONResponse(
             {
                 "id": msg_id,
                 "type": "message",
                 "role": "assistant",
-                "model": body["model"],
-                "content": [{"type": "text", "text": text}],
+                "model": model_key,
+                "content": [{"type": "text", "text": "".join(text_parts)}],
                 "stop_reason": "end_turn",
                 "usage": {
-                    "input_tokens": usage.get("prompt_tokens", 0),
-                    "output_tokens": usage.get("completion_tokens", 0),
+                    "input_tokens": recorded["input_tokens"],
+                    "output_tokens": recorded["output_tokens"],
                 },
             }
         )
 
-    try:
-        upstream = await _open_upstream_stream(openai_body)
-    except UpstreamServiceError as exc:
-        raise await _upstream_error(db, exc, model.model_key)
+    buffered, gen = await _peek_cli_stream(gen)
 
     async def event_stream():
         def sse(event: str, data: dict) -> bytes:
@@ -274,7 +247,7 @@ async def anthropic_messages(
                     "type": "message",
                     "role": "assistant",
                     "content": [],
-                    "model": body["model"],
+                    "model": model_key,
                     "usage": {"input_tokens": 0, "output_tokens": 0},
                 },
             },
@@ -284,43 +257,41 @@ async def anthropic_messages(
             {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}},
         )
 
-        fallback_usage: dict = {}
-        async for chunk in iter_sse_json(upstream):
-            if chunk is None:
-                break
-            choices = chunk.get("choices") or []
-            if choices:
-                delta = choices[0].get("delta") or {}
-                text = delta.get("content")
-                if text:
-                    yield sse(
-                        "content_block_delta",
-                        {
-                            "type": "content_block_delta",
-                            "index": 0,
-                            "delta": {"type": "text_delta", "text": text},
-                        },
-                    )
-            if chunk.get("usage"):
-                fallback_usage = chunk["usage"]
+        usage: dict[str, Any] = {}
+        for ev in buffered:
+            if ev.get("event") == "delta" and ev.get("text"):
+                yield sse(
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0,
+                     "delta": {"type": "text_delta", "text": ev["text"]}},
+                )
+            elif ev.get("event") == "done":
+                usage = ev.get("usage") or {}
+        async for ev in gen:
+            e = ev.get("event")
+            if e == "delta" and ev.get("text"):
+                yield sse(
+                    "content_block_delta",
+                    {"type": "content_block_delta", "index": 0,
+                     "delta": {"type": "text_delta", "text": ev["text"]}},
+                )
+            elif e == "error":
+                # Error mid-stream (after headers): surface as an Anthropic `error` event.
+                yield sse("error", {"type": "error",
+                                    "error": {"type": ev.get("code"), "message": ev.get("message")}})
+                return
+            elif e == "done":
+                usage = ev.get("usage") or {}
 
         yield sse("content_block_stop", {"type": "content_block_stop", "index": 0})
-
-        usage = await _record_ledger(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            model=model,
-            surface="api",
-            request_id=request_id,
-            fallback_usage=fallback_usage,
+        recorded = await _record_api_usage(
+            user_id=user_id, api_key_id=api_key_id, model_id=model_id,
+            request_id=request_id, usage=usage,
         )
         yield sse(
             "message_delta",
-            {
-                "type": "message_delta",
-                "delta": {"stop_reason": "end_turn"},
-                "usage": {"output_tokens": usage["output_tokens"]},
-            },
+            {"type": "message_delta", "delta": {"stop_reason": "end_turn"},
+             "usage": {"output_tokens": recorded["output_tokens"]}},
         )
         yield sse("message_stop", {"type": "message_stop"})
 
@@ -344,60 +315,92 @@ async def chat_completions(
     await db.commit()
 
     request_id = uuid.uuid4().hex
-    body = dict(body)
-    body["extra_headers"] = {"x-ecocode-request-id": request_id}
+    prompt = _openai_messages_to_prompt(body)
     stream = bool(body.get("stream", False))
     user_id = principal.user.id
     api_key_id = principal.api_key.id
+    model_id = model.id
+    model_key = body["model"]
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+    created = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+
+    gen = cli_runner.run_oneshot_turn(
+        user_id=user_id, upstream_model=model.upstream_model, prompt=prompt
+    )
 
     if not stream:
-        try:
-            resp = await litellm_client.call_chat("/chat/completions", body)
-        except UpstreamServiceError as exc:
-            raise await _upstream_error(db, exc, model.model_key)
-        await _record_ledger(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            model=model,
-            surface="api",
-            request_id=request_id,
-            fallback_usage=resp.get("usage") or {},
+        text_parts: list[str] = []
+        usage: dict[str, Any] = {}
+        async for ev in gen:
+            e = ev.get("event")
+            if e == "delta":
+                text_parts.append(ev.get("text", ""))
+            elif e == "error":
+                raise _api_error_from_event(ev)
+            elif e == "done":
+                usage = ev.get("usage") or {}
+        recorded = await _record_api_usage(
+            user_id=user_id, api_key_id=api_key_id, model_id=model_id,
+            request_id=request_id, usage=usage,
         )
-        return JSONResponse(resp)
+        return JSONResponse(
+            {
+                "id": completion_id,
+                "object": "chat.completion",
+                "created": created,
+                "model": model_key,
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": "".join(text_parts)},
+                        "finish_reason": "stop",
+                    }
+                ],
+                "usage": {
+                    "prompt_tokens": recorded["input_tokens"],
+                    "completion_tokens": recorded["output_tokens"],
+                    "total_tokens": recorded["input_tokens"] + recorded["output_tokens"],
+                },
+            }
+        )
 
-    try:
-        upstream = await _open_upstream_stream(body)
-    except UpstreamServiceError as exc:
-        raise await _upstream_error(db, exc, model.model_key)
+    buffered, gen = await _peek_cli_stream(gen)
 
     async def event_stream():
-        fallback_usage: dict = {}
-        buffer = b""
-        async for raw in upstream:
-            buffer += raw
-            yield raw
-            while b"\n\n" in buffer:
-                event_bytes, buffer = buffer.split(b"\n\n", 1)
-                for line in event_bytes.split(b"\n"):
-                    line = line.strip()
-                    if not line.startswith(b"data:"):
-                        continue
-                    payload = line[len(b"data:") :].strip()
-                    if payload in (b"", b"[DONE]"):
-                        continue
-                    try:
-                        obj = json.loads(payload)
-                    except json.JSONDecodeError:
-                        continue
-                    if obj.get("usage"):
-                        fallback_usage = obj["usage"]
-        await _record_ledger(
-            user_id=user_id,
-            api_key_id=api_key_id,
-            model=model,
-            surface="api",
-            request_id=request_id,
-            fallback_usage=fallback_usage,
+        def chunk(delta: dict, finish_reason: str | None = None) -> bytes:
+            payload = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created,
+                "model": model_key,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}],
+            }
+            return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n".encode()
+
+        yield chunk({"role": "assistant", "content": ""})
+
+        usage: dict[str, Any] = {}
+        for ev in buffered:
+            if ev.get("event") == "delta" and ev.get("text"):
+                yield chunk({"content": ev["text"]})
+            elif ev.get("event") == "done":
+                usage = ev.get("usage") or {}
+        async for ev in gen:
+            e = ev.get("event")
+            if e == "delta" and ev.get("text"):
+                yield chunk({"content": ev["text"]})
+            elif e == "error":
+                yield f"data: {json.dumps({'error': {'code': ev.get('code'), 'message': ev.get('message')}}, ensure_ascii=False)}\n\n".encode()
+                yield b"data: [DONE]\n\n"
+                return
+            elif e == "done":
+                usage = ev.get("usage") or {}
+
+        yield chunk({}, finish_reason="stop")
+        yield b"data: [DONE]\n\n"
+        await _record_api_usage(
+            user_id=user_id, api_key_id=api_key_id, model_id=model_id,
+            request_id=request_id, usage=usage,
         )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -8,12 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.deps import client_ip, get_current_user, get_db
 from app.errors import forbidden, not_found
-from app.models import ApiKey, Model, ModelPolicy, User
+from app.models import ApiKey, User
 from app.schemas import ApiKeyCreate, ApiKeyCreatedOut, ApiKeyOut
 from app.security import generate_api_key
 from app.services.audit import record_audit
-from app.services.litellm_client import litellm_client
-from app.services.quota import get_or_create_quota
 
 router = APIRouter(prefix="/api/keys", tags=["keys"])
 
@@ -39,28 +37,9 @@ async def create_key(
     await db.commit()
     await db.refresh(api_key)
 
-    result = await db.execute(
-        select(Model.model_key)
-        .join(ModelPolicy, ModelPolicy.model_id == Model.id)
-        .where(ModelPolicy.user_id == user.id, Model.is_enabled.is_(True))
-    )
-    allowed_models = [r[0] for r in result.all()]
-
-    quota = await get_or_create_quota(db, user.id)
-    max_budget = float(quota.limit_credits) * 2 if quota.limit_credits else 1_000_000.0
-
-    try:
-        litellm_resp = await litellm_client.key_generate(
-            models=allowed_models,
-            metadata={"ecocode_user_id": user.id, "ecocode_key_id": api_key.id},
-            max_budget=max_budget,
-        )
-        api_key.litellm_key_id = litellm_resp.get("key")
-        await db.commit()
-    except Exception:
-        # LiteLLM unreachable/failed — the ecocode key still works for auth/ACL/quota
-        # (enforced by our own backend); the virtual key is only a secondary safety net.
-        pass
+    # اصلاحیهٔ ۵ / amendment 5: no LiteLLM virtual key is minted anymore — the ecocode
+    # key is authoritative on its own (auth/ACL/quota are enforced entirely by this
+    # backend; inference runs through the Claude Code CLI, not LiteLLM).
 
     await record_audit(
         db,
@@ -98,11 +77,6 @@ async def revoke_key(
 
     api_key.is_active = False
     api_key.revoked_at = datetime.datetime.now(datetime.timezone.utc)
-    if api_key.litellm_key_id:
-        try:
-            await litellm_client.key_delete(api_key.litellm_key_id)
-        except Exception:
-            pass
 
     await record_audit(
         db,

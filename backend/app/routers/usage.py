@@ -28,10 +28,18 @@ async def my_usage(user: User = Depends(get_current_user), db: AsyncSession = De
     )
     by_model = [UsageByModel(model_key=r[0], credits=r[1]) for r in by_model_rows.all()]
 
+    # Group by (key, surface): usage with a real ApiKey is attributed to that key;
+    # keyless usage (api_key_id NULL) is split by surface so workspace/IDE agents,
+    # web chat, and keyless API calls each get their own row instead of all being
+    # lumped under "چت وب".
     by_key_rows = await db.execute(
-        select(UsageLedger.api_key_id, func.coalesce(func.sum(UsageLedger.credits), 0))
+        select(
+            UsageLedger.api_key_id,
+            UsageLedger.surface,
+            func.coalesce(func.sum(UsageLedger.credits), 0),
+        )
         .where(UsageLedger.user_id == user.id, UsageLedger.created_at >= quota.period_start)
-        .group_by(UsageLedger.api_key_id)
+        .group_by(UsageLedger.api_key_id, UsageLedger.surface)
     )
     key_names = {
         k.id: k.name
@@ -39,11 +47,16 @@ async def my_usage(user: User = Depends(get_current_user), db: AsyncSession = De
             await db.execute(select(ApiKey).where(ApiKey.user_id == user.id))
         ).scalars()
     }
+    surface_labels = {"ide": "ادیتور (IDE)", "web_chat": "چت وب", "api": "API (بدون کلید)"}
     by_key = [
         UsageByKey(
             api_key_id=r[0],
-            name=key_names.get(r[0], "چت وب") if r[0] else "چت وب",
-            credits=r[1],
+            name=(
+                key_names.get(r[0], "کلید حذف‌شده")
+                if r[0]
+                else surface_labels.get(r[1], r[1] or "نامشخص")
+            ),
+            credits=r[2],
         )
         for r in by_key_rows.all()
     ]

@@ -40,6 +40,10 @@ import type {
   MeResponseWire,
   NumericString,
   OkResponse,
+  Plan,
+  PlanWire,
+  CreatePlanRequest,
+  UpdatePlanRequest,
   QuotaSummary,
   QuotaSummaryWire,
   SendMessageAccepted,
@@ -59,6 +63,7 @@ import type {
   UsageMeResponse,
   UsageMeResponseWire,
   WorkspaceFile,
+  WorkspaceFileContent,
 } from './types';
 
 // ---------- decimal-string parsing at the API boundary ----------
@@ -142,6 +147,15 @@ function parseModel(raw: AdminModelWire): AdminModel {
     input_weight: num(raw.input_weight),
     output_weight: num(raw.output_weight),
     cache_read_weight: num(raw.cache_read_weight),
+  };
+}
+
+/** User Plans / Tiers — decimal credit limits parsed at the boundary like everywhere else. */
+function parsePlan(raw: PlanWire): Plan {
+  return {
+    ...raw,
+    limit_credits: num(raw.limit_credits),
+    limit_credits_5h: numOrNull(raw.limit_credits_5h),
   };
 }
 
@@ -255,12 +269,16 @@ export const conversationsApi = {
   attachmentDownloadUrl: (attachmentId: number) => `/api/attachments/${attachmentId}`,
 };
 
-// ---------- workspace files (F4.6) ----------
+// ---------- workspace files (F4.6; اصلاحیهٔ ۶ web editor) ----------
 export const workspaceApi = {
   listFiles: () => api.get<WorkspaceFile[]>('/api/workspace/files'),
   downloadUrl: (fileId: string) => `/api/workspace/files/${encodeURIComponent(fileId)}`,
   remove: (fileId: string) =>
     api.delete<Record<string, unknown>>(`/api/workspace/files/${encodeURIComponent(fileId)}`),
+  readContent: (fileId: string) =>
+    api.get<WorkspaceFileContent>(`/api/workspace/files/${encodeURIComponent(fileId)}/content`),
+  save: (relpath: string, content: string) =>
+    api.put<WorkspaceFile>('/api/workspace/file', { relpath, content }),
 };
 
 // ---------- teams + team shared memory (اصلاحیهٔ ۴ / Issue H+I) ----------
@@ -376,6 +394,19 @@ export const adminModelsApi = {
     parseModel(await api.patch<AdminModelWire>(`/api/admin/models/${id}`, body)),
 };
 
+// ---------- admin: plans (User Plans / Tiers) ----------
+export const plansApi = {
+  list: async (): Promise<Plan[]> => (await api.get<PlanWire[]>('/api/admin/plans')).map(parsePlan),
+  get: async (id: number): Promise<Plan> => parsePlan(await api.get<PlanWire>(`/api/admin/plans/${id}`)),
+  create: async (body: CreatePlanRequest): Promise<Plan> =>
+    parsePlan(await api.post<PlanWire>('/api/admin/plans', body)),
+  update: async (id: number, body: UpdatePlanRequest): Promise<Plan> =>
+    parsePlan(await api.patch<PlanWire>(`/api/admin/plans/${id}`, body)),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/admin/plans/${id}`),
+  /** Re-apply this plan to all its members (rewrites their quota + models + thinking cap). */
+  apply: (id: number) => api.post<{ ok: boolean; applied_to: number }>(`/api/admin/plans/${id}/apply`),
+};
+
 // ---------- admin: org usage & audit ----------
 export const adminUsageApi = {
   summary: async (): Promise<AdminUsageResponse> =>
@@ -402,4 +433,34 @@ export const adminUpstreamApi = {
 // ---------- health ----------
 export const healthApi = {
   check: () => api.get<HealthResponse>('/api/health'),
+};
+
+// ---------- v2 workspaces (persistent per-repo coding environments) ----------
+export interface WorkspaceV2 {
+  id: number;
+  name: string;
+  kind: string; // 'repo' | 'personal'
+  status: string; // provisioning | running | stopped | ...
+  repo_url: string | null;
+  base_branch: string | null;
+  work_branch: string | null;
+  disk_bytes: number;
+  last_activity_at: string;
+  created_at: string;
+}
+export interface GitlabTokenStatus {
+  connected: boolean;
+  gitlab_host: string | null;
+}
+export const workspacesV2Api = {
+  list: () => api.get<WorkspaceV2[]>('/api/workspaces'),
+  create: (body: { name: string; kind: string; repo_url?: string | null; base_branch?: string | null }) =>
+    api.post<WorkspaceV2>('/api/workspaces', body),
+  resume: (id: number) => api.post<WorkspaceV2>(`/api/workspaces/${id}/resume`),
+  stop: (id: number) => api.post<WorkspaceV2>(`/api/workspaces/${id}/stop`),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/workspaces/${id}`),
+  gitlabStatus: () => api.get<GitlabTokenStatus>('/api/gitlab-token'),
+  setGitlab: (body: { token: string; gitlab_host?: string }) =>
+    api.put<GitlabTokenStatus>('/api/gitlab-token', body),
+  clearGitlab: () => api.delete<Record<string, unknown>>('/api/gitlab-token'),
 };

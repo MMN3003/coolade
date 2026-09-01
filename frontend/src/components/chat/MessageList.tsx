@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import type { Message, ThinkingLevel } from '@/api/types';
 import MarkdownMessage from './MarkdownMessage';
 import EmptyState from '@/components/common/EmptyState';
+import { SURFACE_2 } from '@/theme/theme';
 
 /** Local (not-yet-persisted) live turn state, driven by useConversationStream. */
 export interface LiveTurnState {
@@ -57,8 +58,9 @@ export default function MessageList({ messages, live, onRetry, retryPendingId }:
   }
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, maxWidth: 900, mx: 'auto', width: '100%' }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, p: 2, maxWidth: 760, mx: 'auto', width: '100%' }}>
       {rendered.map((m) => {
+        const isUser = m.role === 'user';
         const isFailed = m.role === 'assistant' && m.status === 'failed';
         // Retry is only offered on the latest turn per the backend guard (§5.1).
         const isRetryable = isFailed && lastMessage?.id === m.id;
@@ -67,19 +69,19 @@ export default function MessageList({ messages, live, onRetry, retryPendingId }:
           m.role === 'assistant' && !isFailed && m.thinking_level && m.thinking_level !== 'off';
 
         return (
-          <Box key={m.id} sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+          <Box key={m.id} sx={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
             <Paper
               elevation={0}
               sx={{
-                px: 2,
-                py: 1.25,
-                maxWidth: '85%',
-                bgcolor: m.role === 'user' ? 'primary.main' : 'background.paper',
-                color: m.role === 'user' ? 'primary.contrastText' : 'text.primary',
-                border: m.role === 'assistant' ? 1 : 0,
-                borderColor: isFailed ? 'error.main' : 'divider',
-                alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
-                ms: m.role === 'user' ? 'auto' : 0,
+                px: isUser ? 2 : 0.5,
+                py: isUser ? 1 : 0.5,
+                maxWidth: isUser ? '85%' : '100%',
+                width: isUser ? 'auto' : '100%',
+                borderRadius: isUser ? 4 : 2,
+                bgcolor: isUser ? SURFACE_2 : 'transparent',
+                color: 'text.primary',
+                border: isFailed ? 1 : 0,
+                borderColor: 'error.main',
               }}
             >
               {m.role === 'assistant' ? (
@@ -129,12 +131,11 @@ export default function MessageList({ messages, live, onRetry, retryPendingId }:
           <Paper
             elevation={0}
             sx={{
-              px: 2,
-              py: 1.25,
-              maxWidth: '85%',
-              border: 1,
-              borderColor: 'divider',
-              alignSelf: 'flex-start',
+              px: 0.5,
+              py: 0.5,
+              width: '100%',
+              bgcolor: 'transparent',
+              border: 0,
             }}
           >
             {live.text ? (

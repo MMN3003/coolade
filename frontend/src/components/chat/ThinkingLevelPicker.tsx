@@ -26,11 +26,14 @@ export default function ThinkingLevelPicker({
   maxLevel,
   onChange,
   disabled,
+  pill,
 }: {
   value: ThinkingLevel;
   maxLevel: ThinkingLevel;
   onChange: (level: ThinkingLevel) => void;
   disabled?: boolean;
+  /** Render as a rounded "pill" to sit beside the model pill. */
+  pill?: boolean;
 }) {
   const { t } = useTranslation();
 
@@ -46,12 +49,25 @@ export default function ThinkingLevelPicker({
     onChange(e.target.value as ThinkingLevel);
   }
 
+  const pillSx = pill
+    ? {
+        borderRadius: 999,
+        bgcolor: 'action.hover',
+        fontWeight: 600,
+        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'transparent' },
+        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+        '& .MuiSelect-select': { py: 0.75 },
+      }
+    : undefined;
+
   return (
     <FormControl size="small" sx={{ minWidth: 130 }}>
       <Select
         value={allowed.includes(value) ? value : allowed[0]}
         onChange={handleChange}
         disabled={disabled || allowed.length === 0}
+        sx={pillSx}
         renderValue={(v) => (
           <Box>
             <PsychologyOutlinedIcon fontSize="inherit" sx={{ verticalAlign: 'middle', me: 0.5 }} />

@@ -12,6 +12,8 @@ import LoadingState from '@/components/common/LoadingState';
 // pages) is lazy-loaded to keep the initial bundle small.
 import LoginPage from '@/pages/LoginPage';
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
+const WorkspacesPage = lazy(() => import('@/pages/WorkspacesPage'));
+const CliOnboardingPage = lazy(() => import('@/pages/CliOnboardingPage'));
 const UsagePage = lazy(() => import('@/pages/UsagePage'));
 const KeysPage = lazy(() => import('@/pages/KeysPage'));
 const HelpPage = lazy(() => import('@/pages/HelpPage'));
@@ -24,6 +26,7 @@ const AdminTeamMemoryPage = lazy(() => import('@/pages/admin/AdminTeamMemoryPage
 const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'));
 const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
 const AdminModelsPage = lazy(() => import('@/pages/admin/AdminModelsPage'));
+const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'));
 const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage'));
 const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'));
 import NotFoundPage from '@/pages/NotFoundPage';
@@ -60,6 +63,8 @@ export default function App() {
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />
+            <Route path="/workspaces" element={<WorkspacesPage />} />
+            <Route path="/cli" element={<CliOnboardingPage />} />
             <Route path="/usage" element={<UsagePage />} />
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/teams" element={<TeamsPage />} />
@@ -74,6 +79,7 @@ export default function App() {
               <Route path="/admin/policies" element={<AdminPoliciesPage />} />
               <Route path="/admin/usage" element={<AdminUsagePage />} />
               <Route path="/admin/models" element={<AdminModelsPage />} />
+              <Route path="/admin/plans" element={<AdminPlansPage />} />
               <Route path="/admin/settings" element={<AdminSettingsPage />} />
               <Route path="/admin/audit" element={<AdminAuditPage />} />
             </Route>

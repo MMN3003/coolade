@@ -1,11 +1,11 @@
 import { useRef, useState, type KeyboardEvent } from 'react';
 import Box from '@mui/material/Box';
-import TextField from '@mui/material/TextField';
+import InputBase from '@mui/material/InputBase';
 import IconButton from '@mui/material/IconButton';
 import Tooltip from '@mui/material/Tooltip';
 import CircularProgress from '@mui/material/CircularProgress';
-import SendIcon from '@mui/icons-material/Send';
-import AttachFileIcon from '@mui/icons-material/AttachFileOutlined';
+import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
+import AddIcon from '@mui/icons-material/Add';
 import { useTranslation } from 'react-i18next';
 import type { AttachmentUploadResponse } from '@/api/types';
 import AttachmentChip from './AttachmentChip';
@@ -20,6 +20,12 @@ interface Props {
   onSend: (content: string) => void;
 }
 
+/**
+ * Large rounded (ChatGPT/GapGPT) composer: a «+» attach control, a borderless
+ * auto-growing input, and an arrow send button — all inside one pill. All the
+ * behavior (Enter-to-send, disabled/sending/uploading states, pending
+ * attachment chips) is unchanged; only the layout/skin is new.
+ */
 export default function MessageInput({
   disabled,
   sending,
@@ -40,7 +46,7 @@ export default function MessageInput({
     setValue('');
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLDivElement>) {
+  function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -53,8 +59,10 @@ export default function MessageInput({
     e.target.value = '';
   }
 
+  const canSend = !disabled && !sending && !!value.trim();
+
   return (
-    <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
+    <Box>
       {pendingAttachments.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1 }}>
           {pendingAttachments.map((a) => (
@@ -62,37 +70,58 @@ export default function MessageInput({
           ))}
         </Box>
       )}
-      <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: 1 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'flex-end',
+          gap: 0.5,
+          p: 0.75,
+          borderRadius: 6,
+          border: 1,
+          borderColor: 'divider',
+          bgcolor: 'background.paper',
+          transition: 'border-color .15s',
+          '&:focus-within': { borderColor: 'text.secondary' },
+        }}
+      >
         <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
         <Tooltip title={t('chat.attachFile')}>
           <span>
             <IconButton
+              size="small"
               onClick={() => fileInputRef.current?.click()}
               disabled={disabled || uploading}
+              sx={{ mb: 0.25 }}
             >
-              {uploading ? <CircularProgress size={20} /> : <AttachFileIcon />}
+              {uploading ? <CircularProgress size={20} /> : <AddIcon />}
             </IconButton>
           </span>
         </Tooltip>
-        <TextField
+        <InputBase
           multiline
           maxRows={8}
           fullWidth
-          size="small"
-          placeholder={t('chat.typeMessage')}
+          placeholder={t('chat.askQuestion')}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
+          sx={{ px: 0.5, py: 0.75, fontSize: '0.95rem' }}
         />
         <Tooltip title={sending ? t('chat.chatBusy') : t('chat.send')}>
           <span>
             <IconButton
-              color="primary"
               onClick={handleSend}
-              disabled={disabled || sending || !value.trim()}
+              disabled={!canSend}
+              sx={{
+                mb: 0.25,
+                bgcolor: 'primary.main',
+                color: 'primary.contrastText',
+                '&:hover': { bgcolor: 'primary.dark' },
+                '&.Mui-disabled': { bgcolor: 'action.hover', color: 'text.disabled' },
+              }}
             >
-              {sending ? <CircularProgress size={20} /> : <SendIcon />}
+              {sending ? <CircularProgress size={20} /> : <ArrowUpwardIcon />}
             </IconButton>
           </span>
         </Tooltip>

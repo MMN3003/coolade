@@ -51,6 +51,27 @@ def resolve_file_id(root: Path, file_id: str) -> Path | None:
     return real
 
 
+def resolve_writable_path(root: Path, relpath: str) -> Path | None:
+    """Return the real, contained target path for a (possibly not-yet-existing)
+    workspace file at `relpath` under `root`, or None if it escapes containment
+    (اصلاحیهٔ ۶ / amendment 6: web editor save). Unlike resolve_file_id this does
+    NOT require the file to exist, but it enforces the same realpath containment on
+    the resolved path AND on its parent, and refuses to overwrite a directory. The
+    caller creates parent dirs as needed."""
+    if not relpath or relpath.startswith("/") or ".." in Path(relpath).parts:
+        return None
+    root_real = Path(os.path.realpath(root))
+    candidate = root / relpath
+    # Resolve the parent (it may not exist yet only up to the last component).
+    parent_real = Path(os.path.realpath(candidate.parent))
+    if parent_real != root_real and root_real not in parent_real.parents:
+        return None
+    real = parent_real / candidate.name
+    if real.is_dir():
+        return None
+    return real
+
+
 class FileEntry:
     def __init__(
         self,

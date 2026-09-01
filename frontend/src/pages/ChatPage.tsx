@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Box from '@mui/material/Box';
-import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
+import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useTranslation } from 'react-i18next';
 import { conversationsApi } from '@/api/endpoints';
 import { ApiError } from '@/api/client';
@@ -13,7 +15,6 @@ import type { AttachmentUploadResponse, Message, ThinkingLevel } from '@/api/typ
 import { useAuthStore } from '@/store/authStore';
 import { getErrorMessage } from '@/utils/errors';
 import { formatPersianDateTime } from '@/utils/date';
-import ConversationSidebar from '@/components/chat/ConversationSidebar';
 import ModelPicker from '@/components/chat/ModelPicker';
 import ThinkingLevelPicker from '@/components/chat/ThinkingLevelPicker';
 import MessageList from '@/components/chat/MessageList';
@@ -89,6 +90,8 @@ export default function ChatPage() {
   // message row/retry-bubble exists, so there is no bubble to attach the
   // disabled state to; the composer itself is the closest equivalent).
   const [quota5hBlockedUntil, setQuota5hBlockedUntil] = useState<string | null>(null);
+  // File/cost side panel is collapsed by default; revealed on request (§F4.6).
+  const [filesOpen, setFilesOpen] = useState(false);
 
   const stream = useConversationStream();
   const justCreatedIdRef = useRef<number | null>(null);
@@ -290,38 +293,61 @@ export default function ChatPage() {
 
   const noModelsAllowed = allowedModels.length === 0;
 
+  const loadingConversation = !!conversationId && conversationQuery.isLoading;
+  const erroredConversation = !!conversationId && conversationQuery.isError;
+  const hasLiveBubble = stream.state.assistantMessageId !== null;
+  // Empty (hero) state: brand-new chat, or a loaded conversation with no
+  // messages and nothing streaming. Never shown while a conversation is still
+  // loading (avoids flashing the hero before its messages arrive).
+  const isEmpty =
+    !loadingConversation && !erroredConversation && displayMessages.length === 0 && !hasLiveBubble;
+
+  const composer = (
+    <MessageInput
+      disabled={noModelsAllowed || !selectedModelKey || quota5hBlocked}
+      sending={isBusy}
+      uploading={uploading}
+      pendingAttachments={pendingAttachments}
+      onRemovePendingAttachment={(id) =>
+        setPendingAttachments((prev) => prev.filter((a) => a.id !== id))
+      }
+      onAttachFile={handleAttachFile}
+      onSend={handleSend}
+    />
+  );
+
+  const disclaimer = (
+    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+      {t('chat.disclaimer')}
+    </Typography>
+  );
+
   return (
-    <Box sx={{ display: 'flex', height: '100%' }}>
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          borderInlineEnd: 1,
-          borderColor: 'divider',
-        }}
-      >
-        <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-          <ConversationSidebar activeId={conversationId} />
-        </Box>
-        <WorkspaceFilesPanel />
-      </Box>
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <Toolbar
-          variant="dense"
-          sx={{ borderBottom: 1, borderColor: 'divider', gap: 2, justifyContent: 'space-between' }}
+    <Box sx={{ display: 'flex', height: '100%', minWidth: 0 }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%' }}>
+        {/* Top-center pill controls + file panel toggle. */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            minHeight: 56,
+          }}
         >
-          <Typography variant="subtitle1" noWrap fontWeight={600}>
-            {conversationQuery.data?.title ?? t('chat.untitled')}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <ThinkingLevelPicker
-              value={selectedThinkingLevel}
-              maxLevel={maxThinkingLevel}
-              disabled={isBusy}
-              onChange={handleThinkingLevelChange}
-            />
+          <Tooltip title={t('chat.myFiles')}>
+            <IconButton
+              size="small"
+              onClick={() => setFilesOpen((v) => !v)}
+              color={filesOpen ? 'primary' : 'default'}
+            >
+              <FolderOutlinedIcon />
+            </IconButton>
+          </Tooltip>
+          <Box sx={{ flexGrow: 1, display: 'flex', justifyContent: 'center', gap: 1 }}>
             <ModelPicker
+              pill
               models={allowedModels}
               value={selectedModelKey}
               disabled={isBusy}
@@ -330,8 +356,17 @@ export default function ChatPage() {
                 else setNewChatModelKey(modelKey);
               }}
             />
+            <ThinkingLevelPicker
+              pill
+              value={selectedThinkingLevel}
+              maxLevel={maxThinkingLevel}
+              disabled={isBusy}
+              onChange={handleThinkingLevelChange}
+            />
           </Box>
-        </Toolbar>
+          {/* Spacer to keep the pills visually centered opposite the toggle. */}
+          <Box sx={{ width: 34, flexShrink: 0 }} />
+        </Box>
 
         {noModelsAllowed && (
           <Alert severity="warning" sx={{ borderRadius: 0 }}>
@@ -349,37 +384,60 @@ export default function ChatPage() {
           </Alert>
         )}
 
-        <Box sx={{ flexGrow: 1, overflowY: 'auto' }}>
-          {conversationId && conversationQuery.isLoading && <LoadingState />}
-          {conversationId && conversationQuery.isError && (
-            <ErrorState onRetry={() => conversationQuery.refetch()} />
-          )}
-          {(!conversationId || conversationQuery.data) && (
-            <MessageList
-              messages={displayMessages}
-              live={{
-                assistantMessageId: stream.state.assistantMessageId,
-                text: stream.state.text,
-                toolStatus: toolStatusLabel(stream.state.tool),
-              }}
-              onRetry={handleRetry}
-              retryPendingId={retryPendingId}
-            />
-          )}
-        </Box>
-
-        <MessageInput
-          disabled={noModelsAllowed || !selectedModelKey || quota5hBlocked}
-          sending={isBusy}
-          uploading={uploading}
-          pendingAttachments={pendingAttachments}
-          onRemovePendingAttachment={(id) =>
-            setPendingAttachments((prev) => prev.filter((a) => a.id !== id))
-          }
-          onAttachFile={handleAttachFile}
-          onSend={handleSend}
-        />
+        {isEmpty ? (
+          /* Empty (hero) state: centered heading with the composer directly below. */
+          <Box
+            sx={{
+              flexGrow: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              px: 2,
+            }}
+          >
+            <Typography variant="h5" fontWeight={600} sx={{ mb: 3, textAlign: 'center' }}>
+              {t('chat.emptyHeading')}
+            </Typography>
+            <Box sx={{ width: '100%', maxWidth: 760 }}>
+              {composer}
+              {disclaimer}
+            </Box>
+          </Box>
+        ) : (
+          /* Active state: scrollable middle + composer pinned at the bottom.
+             The composer stays mounted while a conversation loads/errors (as
+             before) so the streaming state machine and input never flicker. */
+          <>
+            <Box sx={{ flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+              {loadingConversation ? (
+                <LoadingState />
+              ) : erroredConversation ? (
+                <ErrorState onRetry={() => conversationQuery.refetch()} />
+              ) : (
+                <MessageList
+                  messages={displayMessages}
+                  live={{
+                    assistantMessageId: stream.state.assistantMessageId,
+                    text: stream.state.text,
+                    toolStatus: toolStatusLabel(stream.state.tool),
+                  }}
+                  onRetry={handleRetry}
+                  retryPendingId={retryPendingId}
+                />
+              )}
+            </Box>
+            <Box sx={{ px: 2, pb: 1.5, pt: 0.5 }}>
+              <Box sx={{ maxWidth: 760, mx: 'auto' }}>
+                {composer}
+                {disclaimer}
+              </Box>
+            </Box>
+          </>
+        )}
       </Box>
+
+      {filesOpen && <WorkspaceFilesPanel onClose={() => setFilesOpen(false)} />}
     </Box>
   );
 }

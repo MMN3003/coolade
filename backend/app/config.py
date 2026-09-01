@@ -58,6 +58,43 @@ class Settings(BaseSettings):
     # اصلاحیهٔ ۴ / Issue H+I: /data/teams/<team_id>/memory (TECH.md section 2/3/5.9)
     teams_root: str = "/data/teams"
 
+    # --- اصلاحیهٔ ۶ / amendment 6: Stage-2 isolated sandbox runner (Bash/git) ---
+    # OFF by default. Enabling requires the egress allowlist proxy to be up (the
+    # runner refuses to launch without it — see app/sandbox_runner.py).
+    sandbox_enabled: bool = False
+    sandbox_image: str = "ecocode-runner:latest"
+    sandbox_network: str = "ecocode_sandbox_net"
+    sandbox_memory: str = "1g"
+    sandbox_cpus: str = "1"
+    sandbox_pids_limit: int = 256
+    sandbox_timeout_seconds: int = 300
+    sandbox_max_concurrency: int = 2
+    egress_proxy_url: str = "http://egress:8080"
+    # git push target (parametric, disabled until provided): e.g. https://git.ecobin.ir/
+    git_remote_base: str = ""
+
+    # --- v2 — persistent workspaces (TECH-V2 §2/§6) ---
+    workspace_image: str = "eco-ide-spike-code-server:latest"
+    workspace_network: str = "ecocode_sandbox_net"
+    workspace_memory: str = "2g"
+    workspace_cpus: str = "2"
+    workspace_pids_limit: int = 512
+    workspace_idle_minutes: int = 30
+    workspace_max_running: int = 4
+    workspace_retention_days: int = 30      # GC abandoned stopped workspaces after this
+    workspace_reaper_minutes: int = 1       # how often the reaper runs (idle-stop/GC/disk)
+    workspace_volume_prefix: str = "ecows"
+    # the in-workspace agent's ANTHROPIC_BASE_URL points at the backend raw relay (D2.4);
+    # the relay then forwards to the real upstream below.
+    workspace_relay_url: str = "http://backend:8000/relay"
+    # where the relay FORWARDS to (real upstream). empty -> falls back to upstream_base_url;
+    # in mock mode set to http://mock-upstream:8080.
+    workspace_upstream_base_url: str = ""
+    # only route workspace egress through the allowlist proxy when it's actually deployed
+    # (production/sandbox profile). Off for plain dev so the container can reach the relay.
+    workspace_egress_enabled: bool = False
+    gitlab_default_host: str = "git.ecobin.ir"
+
     admin_username: str = "admin"
     admin_password: str = "changeme123"
     admin_email: str = ""

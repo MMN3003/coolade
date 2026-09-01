@@ -28,7 +28,7 @@ import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
 import { useTranslation } from 'react-i18next';
-import { adminUsersApi } from '@/api/endpoints';
+import { adminUsersApi, plansApi } from '@/api/endpoints';
 import type { AdminUser, AuthSource, CreateUserRequest, UserRole } from '@/api/types';
 import { formatPersianDateTime } from '@/utils/date';
 import { getErrorMessage } from '@/utils/errors';
@@ -42,6 +42,7 @@ const emptyForm: CreateUserRequest = {
   email: '',
   role: 'user',
   auth_source: 'local',
+  plan_id: null,
 };
 
 export default function AdminUsersPage() {
@@ -49,6 +50,7 @@ export default function AdminUsersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const listQuery = useQuery({ queryKey: ['admin', 'users'], queryFn: adminUsersApi.list });
+  const plansQuery = useQuery({ queryKey: ['admin', 'plans'], queryFn: plansApi.list });
 
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<CreateUserRequest>(emptyForm);
@@ -65,6 +67,14 @@ export default function AdminUsersPage() {
 
   const toggleActiveMutation = useMutation({
     mutationFn: (u: AdminUser) => adminUsersApi.update(u.id, { is_active: !u.is_active }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
+  });
+
+  // Assign/change an EXISTING user's plan inline. Backend re-applies the plan's
+  // quota + models + thinking cap (present-null clears the association).
+  const updatePlanMutation = useMutation({
+    mutationFn: (vars: { id: number; plan_id: number | null }) =>
+      adminUsersApi.update(vars.id, { plan_id: vars.plan_id }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin', 'users'] }),
   });
 
@@ -100,6 +110,7 @@ export default function AdminUsersPage() {
                 <TableCell>{t('admin.users.displayName')}</TableCell>
                 <TableCell>{t('admin.users.role')}</TableCell>
                 <TableCell>{t('admin.users.authSource')}</TableCell>
+                <TableCell>{t('plans.fieldLabel')}</TableCell>
                 <TableCell>{t('common.status')}</TableCell>
                 <TableCell>{t('common.date')}</TableCell>
                 <TableCell align="left">{t('common.actions')}</TableCell>
@@ -119,6 +130,31 @@ export default function AdminUsersPage() {
                   </TableCell>
                   <TableCell>
                     {u.auth_source === 'ldap' ? t('admin.users.authLdap') : t('admin.users.authLocal')}
+                  </TableCell>
+                  <TableCell>
+                    <TextField
+                      select
+                      size="small"
+                      variant="standard"
+                      value={u.plan_id ?? ''}
+                      onChange={(e) =>
+                        updatePlanMutation.mutate({
+                          id: u.id,
+                          plan_id: e.target.value === '' ? null : Number(e.target.value),
+                        })
+                      }
+                      disabled={
+                        updatePlanMutation.isPending && updatePlanMutation.variables?.id === u.id
+                      }
+                      sx={{ minWidth: 130 }}
+                    >
+                      <MenuItem value="">{t('plans.none')}</MenuItem>
+                      {(plansQuery.data ?? []).map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.name}
+                        </MenuItem>
+                      ))}
+                    </TextField>
                   </TableCell>
                   <TableCell>
                     <Chip
@@ -212,6 +248,23 @@ export default function AdminUsersPage() {
             >
               <MenuItem value="user">{t('admin.users.roleUser')}</MenuItem>
               <MenuItem value="admin">{t('admin.users.roleAdmin')}</MenuItem>
+            </TextField>
+            <TextField
+              select
+              label={t('plans.fieldLabel')}
+              value={form.plan_id ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, plan_id: e.target.value === '' ? null : Number(e.target.value) })
+              }
+              fullWidth
+              helperText={t('plans.fieldHint')}
+            >
+              <MenuItem value="">{t('plans.none')}</MenuItem>
+              {(plansQuery.data ?? []).map((p) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}
+                </MenuItem>
+              ))}
             </TextField>
             {createMutation.isError && <Alert severity="error">{getErrorMessage(createMutation.error)}</Alert>}
           </Stack>
