@@ -1,0 +1,6 @@
+{"evt": "start", "port": 8899, "slug": "eco-biz", "ts": 1788286986.243}
+{"evt": "rpc", "method": "initialize", "tool": null, "id": 0, "ts": 1788287000.206}
+{"evt": "rpc", "method": "notifications/initialized", "tool": null, "id": null, "ts": 1788287000.215}
+{"evt": "rpc", "method": "tools/list", "tool": null, "id": 1, "ts": 1788287000.218}
+{"evt": "rpc", "method": "tools/call", "tool": "list_tables", "id": 2, "ts": 1788287002.586}
+{"evt": "rpc", "method": "tools/call", "tool": "run_query", "id": 3, "ts": 1788287006.347}
