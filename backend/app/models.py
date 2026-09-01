@@ -520,3 +520,101 @@ class Setting(Base):
     updated_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="SET NULL")
     )
+
+
+class ServiceKind(str, enum.Enum):
+    sql = "sql"
+    files = "files"
+    http = "http"
+
+
+class GrantLevel(str, enum.Enum):
+    read = "read"
+    write = "write"
+
+
+service_kind_enum = PgEnum(ServiceKind, name="service_kind", create_type=False)
+grant_level_enum = PgEnum(GrantLevel, name="grant_level", create_type=False)
+
+
+class Service(Base):
+    """Amendment-1 (docs/SERVICES-V2.md §ب-۶) — an organizational service:
+    a grantable bundle of (published skill package, connector, access contract).
+    Connector credentials live ONLY here, Fernet-encrypted; they are decrypted
+    solely inside the MCP gateway at call time and never enter a workspace
+    container (mirror of the D2.4 upstream-token rule)."""
+
+    __tablename__ = "services"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    slug: Mapped[str] = mapped_column(String(60), nullable=False, unique=True)  # [a-z0-9-]
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    kind: Mapped[ServiceKind] = mapped_column(service_kind_enum, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Non-secret connector config (display host, limit overrides, path/method allowlist).
+    config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    conn_read_enc: Mapped[str] = mapped_column(Text, nullable=False)
+    conn_write_enc: Mapped[str | None] = mapped_column(Text)  # stays NULL until P5b
+    skill_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ServiceGrant(Base):
+    """Per-user access level to a service. No row = no access (default);
+    the gateway re-reads this on EVERY tool call so revocation is immediate."""
+
+    __tablename__ = "service_grants"
+    __table_args__ = (UniqueConstraint("service_id", "user_id", name="uq_grant"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    service_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("services.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    level: Mapped[GrantLevel] = mapped_column(grant_level_enum, nullable=False)
+    granted_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class ServiceAudit(Base):
+    """One row per gateway tool call. Privacy contract (SV7): read calls store
+    only a params digest, never the full text; approved mutations (P5b) are the
+    sole exception and live in service_mutations."""
+
+    __tablename__ = "service_audit"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    service_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("services.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("workspaces.id", ondelete="SET NULL")
+    )
+    tool: Mapped[str] = mapped_column(String(80), nullable=False)
+    level_used: Mapped[GrantLevel] = mapped_column(grant_level_enum, nullable=False)
+    params_digest: Mapped[str | None] = mapped_column(String(64))  # sha256 hex
+    ok: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(40))
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    result_rows: Mapped[int | None] = mapped_column(Integer)  # rows for sql, bytes for files
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
