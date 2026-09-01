@@ -6,6 +6,12 @@ import type {
   AccountLimitsResponseWire,
   AddQuotaBonusRequest,
   AddTeamMemberRequest,
+  CreateServiceRequest,
+  OrgService,
+  ServiceGrant,
+  ServiceGrantLevel,
+  ServiceTestResult,
+  UpdateServiceRequest,
   AdminModel,
   AdminModelWire,
   AdminQuota,
@@ -463,4 +469,19 @@ export const workspacesV2Api = {
   setGitlab: (body: { token: string; gitlab_host?: string }) =>
     api.put<GitlabTokenStatus>('/api/gitlab-token', body),
   clearGitlab: () => api.delete<Record<string, unknown>>('/api/gitlab-token'),
+};
+
+// ---------- admin: organizational services (amendment-1) ----------
+export const adminServicesApi = {
+  list: () => api.get<OrgService[]>('/api/admin/services'),
+  create: (body: CreateServiceRequest) => api.post<OrgService>('/api/admin/services', body),
+  update: (id: number, body: UpdateServiceRequest) =>
+    api.patch<OrgService>(`/api/admin/services/${id}`, body),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/admin/services/${id}`),
+  test: (id: number) => api.post<ServiceTestResult>(`/api/admin/services/${id}/test`),
+  grants: (id: number) => api.get<ServiceGrant[]>(`/api/admin/services/${id}/grants`),
+  setGrant: (id: number, userId: number, level: ServiceGrantLevel) =>
+    api.put<{ ok: boolean }>(`/api/admin/services/${id}/grants/${userId}`, { level }),
+  revokeGrant: (id: number, userId: number) =>
+    api.delete<Record<string, unknown>>(`/api/admin/services/${id}/grants/${userId}`),
 };

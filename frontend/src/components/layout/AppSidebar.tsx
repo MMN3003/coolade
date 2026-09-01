@@ -44,6 +44,7 @@ import AssessmentIcon from '@mui/icons-material/AssessmentOutlined';
 import MemoryIcon from '@mui/icons-material/MemoryOutlined';
 import CardMembershipIcon from '@mui/icons-material/CardMembershipOutlined';
 import CloudSyncIcon from '@mui/icons-material/CloudSyncOutlined';
+import HubIcon from '@mui/icons-material/HubOutlined';
 import HistoryIcon from '@mui/icons-material/HistoryOutlined';
 import LightModeIcon from '@mui/icons-material/LightModeOutlined';
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
@@ -145,6 +146,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
     { label: t('nav.adminUsage'), icon: <AssessmentIcon />, path: '/admin/usage' },
     { label: t('nav.adminModels'), icon: <MemoryIcon />, path: '/admin/models' },
     { label: t('nav.plans'), icon: <CardMembershipIcon />, path: '/admin/plans' },
+    { label: t('nav.services'), icon: <HubIcon />, path: '/admin/services' },
     { label: t('nav.adminSettings'), icon: <CloudSyncIcon />, path: '/admin/settings' },
     { label: t('nav.adminAudit'), icon: <HistoryIcon />, path: '/admin/audit' },
   ];

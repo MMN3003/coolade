@@ -27,6 +27,7 @@ const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'));
 const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
 const AdminModelsPage = lazy(() => import('@/pages/admin/AdminModelsPage'));
 const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'));
+const AdminServicesPage = lazy(() => import('@/pages/admin/AdminServicesPage'));
 const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage'));
 const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'));
 import NotFoundPage from '@/pages/NotFoundPage';
@@ -80,6 +81,7 @@ export default function App() {
               <Route path="/admin/usage" element={<AdminUsagePage />} />
               <Route path="/admin/models" element={<AdminModelsPage />} />
               <Route path="/admin/plans" element={<AdminPlansPage />} />
+              <Route path="/admin/services" element={<AdminServicesPage />} />
               <Route path="/admin/settings" element={<AdminSettingsPage />} />
               <Route path="/admin/audit" element={<AdminAuditPage />} />
             </Route>

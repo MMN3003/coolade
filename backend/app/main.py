@@ -17,6 +17,7 @@ from app.internal import router as internal_router
 from app.routers import (
     admin_models,
     admin_plans,
+    admin_services,
     admin_teams,
     admin_upstream,
     admin_usage,
@@ -25,6 +26,7 @@ from app.routers import (
     conversations,
     health,
     keys,
+    mcp_gateway,
     relay,
     teams,
     usage,
@@ -121,7 +123,9 @@ app.include_router(usage.router)
 # v2 — the old CLI-wrapping web service (/v1 passthrough for Cline) is removed
 # (PRD-V2 L1/decision-2). Only the raw relay (/relay/v1) remains for agents.
 app.include_router(relay.router)
+app.include_router(mcp_gateway.router)
 app.include_router(admin_users.router)
+app.include_router(admin_services.router)
 app.include_router(admin_teams.router)
 app.include_router(admin_models.router)
 app.include_router(admin_plans.router)

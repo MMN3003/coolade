@@ -73,7 +73,8 @@
     "adminTeams": "Teams",
     "profile": "Account",
     "quotaBannerWarning": "You have used {{percent}}% of your current period quota.",
-    "quotaBannerExceeded": "Your current period quota has run out."
+    "quotaBannerExceeded": "Your current period quota has run out.",
+    "services": "Services"
   },
   "chat": {
     "newConversation": "New chat",
@@ -158,5 +159,37 @@
     "fieldLabel": "Plan",
     "fieldHint": "Choosing a plan makes the user inherit its quota, models and thinking cap.",
     "none": "— No plan —"
+  },
+  "services": {
+    "title": "Organizational services",
+    "intro": "A service is a controlled connection to an org system (ops DB, accounting, …). Credentials stay server-side; granted users' assistants reach it only through the gateway, capped at their access level.",
+    "createService": "New service",
+    "editService": "Edit service",
+    "name": "Service name",
+    "slug": "Slug",
+    "kind": "Connector type",
+    "description": "Description",
+    "descriptionHint": "Helps the assistant understand what data this service holds; be precise.",
+    "connRead": "Read-only connection (DSN)",
+    "connReadHint": "A DB account with SELECT-only grants. Stored encrypted; never shown again.",
+    "connRotateHint": "Enter a new value to rotate; leave empty to keep.",
+    "connWrite": "Write connection (optional — later phase)",
+    "connWriteHint": "Unused until the change-approval flow ships.",
+    "enabled": "Enabled",
+    "grantCount": "Grants",
+    "testConnection": "Test connection",
+    "manageGrants": "Manage access",
+    "grantsTitle": "Access to “{{name}}”",
+    "user": "User",
+    "level": "Level",
+    "levelRead": "Reports only",
+    "levelWrite": "Reports + changes",
+    "levelWriteSoon": "Reports + changes (soon)",
+    "grant": "Grant",
+    "revoke": "Revoke",
+    "noGrants": "No users granted yet — without a grant, users cannot see this service at all.",
+    "noServices": "No services defined yet.",
+    "deleteConfirmTitle": "Delete service",
+    "deleteConfirmBody": "Delete “{{name}}” with all its grants and call history? This cannot be undone."
   }
 }

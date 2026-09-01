@@ -862,3 +862,53 @@ export interface HealthResponse {
   upstream_connected: boolean;
   cli_available: boolean;
 }
+
+// ---------- admin: organizational services (amendment-1) ----------
+export type ServiceKind = 'sql' | 'files' | 'http';
+export type ServiceGrantLevel = 'read' | 'write';
+
+export interface OrgService {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: ServiceKind;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  has_write_conn: boolean;
+  skill_version: number;
+  grant_count: number;
+  created_at: string;
+}
+
+export interface CreateServiceRequest {
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  kind: ServiceKind;
+  config?: Record<string, unknown>;
+  conn_read: string;
+  conn_write?: string | null;
+}
+
+export interface UpdateServiceRequest {
+  name?: string;
+  description?: string | null;
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+  conn_read?: string;
+  conn_write?: string;
+}
+
+export interface ServiceGrant {
+  user_id: number;
+  username: string;
+  display_name: string | null;
+  level: ServiceGrantLevel;
+  created_at: string;
+}
+
+export interface ServiceTestResult {
+  ok: boolean;
+  message: string;
+}

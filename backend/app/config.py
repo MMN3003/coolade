@@ -93,6 +93,11 @@ class Settings(BaseSettings):
     # only route workspace egress through the allowlist proxy when it's actually deployed
     # (production/sandbox profile). Off for plain dev so the container can reach the relay.
     workspace_egress_enabled: bool = False
+
+    # --- amendment-1: organizational services / MCP gateway (docs/SERVICES-V2.md SV9) ---
+    service_rate_per_min: int = 30      # gateway tool calls per user per minute
+    service_sql_row_limit: int = 1000   # max rows returned per run_query
+    service_sql_timeout_s: int = 15     # per-query statement timeout
     gitlab_default_host: str = "git.ecobin.ir"
 
     admin_username: str = "admin"

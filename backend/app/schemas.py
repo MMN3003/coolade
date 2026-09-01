@@ -482,6 +482,59 @@ class HealthOut(BaseModel):
     cli_available: bool
 
 
+# ---------- Admin: organizational services (amendment-1, docs/SERVICES-V2.md) ----------
+class ServiceCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    slug: str | None = None  # generated from name if absent; uniquified either way
+    description: str | None = None
+    kind: Literal["sql", "files", "http"] = "sql"
+    config: dict[str, Any] = {}
+    # Credentials are WRITE-ONLY: accepted here, Fernet-encrypted at rest,
+    # never returned by any endpoint.
+    conn_read: str = Field(min_length=1)
+    conn_write: str | None = None
+
+
+class ServiceUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    enabled: bool | None = None
+    config: dict[str, Any] | None = None
+    conn_read: str | None = None   # provide to rotate; omit to keep
+    conn_write: str | None = None
+
+
+class ServiceOut(BaseModel):
+    id: int
+    slug: str
+    name: str
+    description: str | None
+    kind: str
+    enabled: bool
+    config: dict[str, Any] = {}
+    has_write_conn: bool = False
+    skill_version: int = 0
+    grant_count: int = 0
+    created_at: datetime.datetime
+
+
+class ServiceTestOut(BaseModel):
+    ok: bool
+    message: str
+
+
+class ServiceGrantSet(BaseModel):
+    level: Literal["read", "write"] = "read"
+
+
+class ServiceGrantOut(BaseModel):
+    user_id: int
+    username: str
+    display_name: str | None = None
+    level: str
+    created_at: datetime.datetime
+
+
 # ---------- generic ----------
 class OkResponse(BaseModel):
     ok: bool = True
