@@ -39,7 +39,7 @@ ADMIN_TOOLS: list[dict[str, Any]] = [
         "name": "upsert_service",
         "description": (
             "ساخت یا ویرایش یک سرویس. برای ساخت: name و kind و conn_read الزامی است. "
-            "kind یکی از sql (DSN پستگرس فقط‌خواندنی)، files (مسیر ریشهٔ فایل‌ها روی سرور)، "
+            "kind یکی از sql (DSN فقط‌خواندنی پستگرس postgresql://… یا اوراکل oracle://user:pass@host:1521/SERVICE)، files (مسیر ریشهٔ فایل‌ها روی سرور)، "
             "http (JSON شامل base_url و headers اختیاری). اعتبارنامه رمز شده ذخیره می‌شود."
         ),
         "inputSchema": {

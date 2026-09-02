@@ -197,6 +197,116 @@ def _jsonable(value: Any) -> Any:
     return value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
 
 
+def _is_oracle_dsn(dsn: str) -> bool:
+    return dsn.strip().lower().startswith(("oracle://", "oracle+thin://"))
+
+
+# ------------------------------------------------------------ oracle driver
+# python-oracledb THIN mode (product request 2026-09-02, relayed from the
+# service-builder assistant): pure-python, no Instant Client — connects
+# straight to host:port/service. DSN format accepted from admins:
+#   oracle://user:pass@host:1521/SERVICE_NAME
+async def _ora_connect(dsn: str):
+    import urllib.parse
+
+    import oracledb
+
+    oracledb.defaults.fetch_lobs = False  # CLOB->str, BLOB->bytes (jsonable)
+    u = urllib.parse.urlsplit(dsn.replace("oracle+thin://", "oracle://", 1))
+    service = (u.path or "").lstrip("/")
+    if not (u.hostname and u.username and service):
+        raise SqlGuardError("DSN اوراکل باید به شکل oracle://user:pass@host:1521/SERVICE باشد.")
+    conn = await oracledb.connect_async(
+        user=urllib.parse.unquote(u.username),
+        password=urllib.parse.unquote(u.password or ""),
+        dsn=f"{u.hostname}:{u.port or 1521}/{service}",
+        tcp_connect_timeout=5,
+    )
+    # Per-round-trip cap (ms) — the Oracle counterpart of statement_timeout.
+    conn.call_timeout = settings.service_sql_timeout_s * 1000
+    # Belt-and-braces: the connection's single (never-committed) transaction is
+    # read-only — any DML raises ORA-01456. Must be the FIRST statement of the
+    # transaction (ORA-01453), hence here and not per-query.
+    cur = conn.cursor()
+    await cur.execute("SET TRANSACTION READ ONLY")
+    return conn
+
+
+_ORA_SYSTEM_SCHEMAS = (
+    "'SYS','SYSTEM','OUTLN','XDB','CTXSYS','MDSYS','ORDSYS','ORDDATA','DBSNMP',"
+    "'APPQOSSYS','WMSYS','GSMADMIN_INTERNAL','AUDSYS','OJVMSYS','DVSYS','LBACSYS','REMOTE_SCHEDULER_AGENT'"
+)
+
+
+async def _ora_fetch(conn, sql: str, binds: dict[str, Any] | None = None) -> tuple[list[str], list[tuple]]:
+    cur = conn.cursor()
+    await cur.execute(sql, binds or {})
+    rows = await cur.fetchall()
+    cols = [d[0].lower() for d in cur.description or []]
+    return cols, rows
+
+
+async def ora_list_tables(dsn: str) -> dict[str, Any]:
+    conn = await _ora_connect(dsn)
+    try:
+        _, me = await _ora_fetch(conn, "SELECT USER FROM dual")
+        current = me[0][0] if me else ""
+        _, rows = await _ora_fetch(
+            conn,
+            "SELECT owner, table_name FROM all_tables "
+            f"WHERE owner NOT IN ({_ORA_SYSTEM_SCHEMAS}) ORDER BY owner, table_name",
+        )
+        tables = [t if o == current else f"{o}.{t}" for o, t in rows]
+        return {"tables": tables, "row_count": len(tables)}
+    finally:
+        await conn.close()
+
+
+async def ora_describe_table(dsn: str, table: str) -> dict[str, Any]:
+    owner, _, name = table.rpartition(".")
+    conn = await _ora_connect(dsn)
+    try:
+        if not owner:
+            _, me = await _ora_fetch(conn, "SELECT USER FROM dual")
+            owner = me[0][0] if me else ""
+        _, rows = await _ora_fetch(
+            conn,
+            "SELECT column_name, data_type, nullable FROM all_tab_columns "
+            "WHERE owner = UPPER(:o) AND table_name = UPPER(:t) ORDER BY column_id",
+            {"o": owner, "t": name},
+        )
+        if not rows:
+            return {"error": f"جدول {table} یافت نشد یا این اکانت به آن دسترسی ندارد.", "row_count": 0}
+        return {
+            "columns": [
+                {"name": c.lower(), "type": ty, "nullable": nu == "Y"} for c, ty, nu in rows
+            ],
+            "row_count": len(rows),
+        }
+    finally:
+        await conn.close()
+
+
+async def ora_run_query(dsn: str, sql: str) -> dict[str, Any]:
+    cleaned = clean_read_sql(sql)
+    limit = settings.service_sql_row_limit
+    # Oracle: no `AS` in table aliases; row cap via FETCH FIRST (12c+).
+    wrapped = f"SELECT * FROM ({cleaned}) ecocode_sub FETCH FIRST {limit + 1} ROWS ONLY"
+    conn = await _ora_connect(dsn)
+    try:
+        cols, records = await _ora_fetch(conn, wrapped)
+    finally:
+        await conn.close()
+    truncated = len(records) > limit
+    records = records[:limit]
+    rows = [{c: _jsonable(v) for c, v in zip(cols, rec)} for rec in records]
+    out: dict[str, Any] = {"rows": rows, "row_count": len(rows), "sql_executed": cleaned}
+    if truncated:
+        out["truncated"] = True
+        out["note"] = f"نتیجه بیش از {limit} ردیف بود و بریده شد؛ کوئری را محدودتر کن."
+    return out
+
+
 async def _pg_connect(dsn: str) -> asyncpg.Connection:
     """Read connection with server-side belt-and-braces: statement timeout AND
     a read-only session, regardless of what the account itself allows."""
@@ -369,12 +479,15 @@ async def call_tool(service: Service, tool: str, arguments: dict[str, Any]) -> d
     if not conn:
         raise SqlGuardError("اعتبارنامهٔ سرویس قابل بازیابی نیست؛ به ادمین اطلاع دهید.")
     if service.kind == ServiceKind.sql:
+        oracle = _is_oracle_dsn(conn)
         if tool == "list_tables":
-            return await sql_list_tables(conn)
+            return await (ora_list_tables(conn) if oracle else sql_list_tables(conn))
         if tool == "describe_table":
-            return await sql_describe_table(conn, str(arguments.get("table", "")))
+            table = str(arguments.get("table", ""))
+            return await (ora_describe_table(conn, table) if oracle else sql_describe_table(conn, table))
         if tool == "run_query":
-            return await sql_run_query(conn, str(arguments.get("sql", "")))
+            q = str(arguments.get("sql", ""))
+            return await (ora_run_query(conn, q) if oracle else sql_run_query(conn, q))
     elif service.kind == ServiceKind.files:
         if tool == "list_dir":
             return await files_list_dir(conn, str(arguments.get("path", "")))
@@ -392,6 +505,13 @@ async def test_connection(service_kind: ServiceKind, conn: str) -> tuple[bool, s
     Error text goes to the admin only, never to end users."""
     try:
         if service_kind == ServiceKind.sql:
+            if _is_oracle_dsn(conn):
+                c = await _ora_connect(conn)
+                try:
+                    await _ora_fetch(c, "SELECT 1 FROM dual")
+                finally:
+                    await c.close()
+                return True, "اتصال اوراکل برقرار شد (SELECT 1 FROM dual موفق)."
             c = await _pg_connect(conn)
             try:
                 await c.fetchval("SELECT 1")

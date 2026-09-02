@@ -55,7 +55,7 @@ const emptyForm: ServiceForm = {
 };
 
 const CONN_PLACEHOLDER: Record<ServiceForm['kind'], string> = {
-  sql: 'postgresql://user:pass@host:5432/db',
+  sql: 'postgresql://user:pass@host:5432/db  |  oracle://user:pass@host:1521/SERVICE',
   files: '/data/shared/reports',
   http: '{"base_url": "https://api.example.com", "headers": {"X-Api-Key": "..."}}',
 };

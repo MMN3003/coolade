@@ -303,6 +303,7 @@ SERVICE_MUTATION_TTL_MIN=60    # P5b: انقضای درخواست تأییدنش
 |---|---|
 | اسکیمای DB (0008) + gateway `/mcp/svc/{slug}` + دو لایه enforcement + audit | ✅ دیپلوی و E2E |
 | پنل ادمین (کاتالوگ/تست/گرنت) + connectorهای `sql`/`files`/`http` (read) | ✅ |
+| **Oracle در connector نوع sql** (درخواست مالک محصول 2026-09-02): تشخیص از scheme (`oracle://user:pass@host:1521/SERVICE`)، درایور `python-oracledb` در حالت **thin** (بدون Instant Client)، `SET TRANSACTION READ ONLY` + `call_timeout` + سقف ردیف با `FETCH FIRST` | ✅ |
 | **DS6 — سینک مسیر چت:** کپی skill به `<ws>/.claude/skills/` + کانفیگ MCP نوبتی با **کلید نوبتیِ در-حافظه** + `--mcp-config/--strict-mcp-config/--allowedTools` در `cli_runner` | ✅ E2E: چت عادی → دادهٔ واقعی |
 | **دستیار سرویس‌ساز (SV2):** endpoint رزروشدهٔ `_admin` (فقط admin) با ابزارهای upsert/test/publish_skill/grant/revoke/delete/list + skill داخلی `eco-service-builder` که فقط به ادمین سینک می‌شود | ✅ E2E کامل: ساخت→تست→انتشار skill→گرنت از داخل چت؛ سپس مصرف همان سرویس توسط چت جدید |
 | رفع باگ حین E2E: `audit_log.target_id` (FK به users) برای اکشن‌های سرویس دیگر id سرویس نمی‌گیرد | ✅ |

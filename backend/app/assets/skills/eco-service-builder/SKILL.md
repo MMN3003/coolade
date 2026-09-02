@@ -18,7 +18,8 @@ per-user (بدون دسترسی/read). کاربر بدون گرنت، سرویس
 
 1. **شناخت:** بپرس چه سیستمی است و کاربران چه سؤال‌هایی از آن خواهند پرسید.
    نوع connector را تعیین کن:
-   - `sql` → conn_read = DSN پستگرس (postgresql://user:pass@host:port/db)
+   - `sql` → conn_read = DSN پستگرس (postgresql://user:pass@host:port/db) **یا اوراکل**
+     (oracle://user:pass@host:1521/SERVICE_NAME — حالت thin، بدون Instant Client)
    - `files` → conn_read = مسیر ریشهٔ فایل‌ها روی سرور backend
    - `http` → conn_read = JSON مثل {"base_url": "https://...", "headers": {"X-Api-Key": "..."}}
 2. **اصل امنیتی که همیشه بگویی:** برای sql حتماً اکانت دیتابیس **فقط‌خواندنی**
