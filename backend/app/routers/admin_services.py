@@ -102,8 +102,13 @@ async def create_service(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> ServiceOut:
-    if payload.kind != "sql":
-        raise bad_request("در این نسخه فقط connector نوع sql پشتیبانی می‌شود (P5a).")
+    if payload.kind == "http":
+        import json as _json
+
+        try:
+            _json.loads(payload.conn_read)["base_url"]
+        except Exception:
+            raise bad_request('برای نوع http، اتصال باید JSON با کلید base_url باشد.')
     slug = await _unique_slug(db, _slugify(payload.slug or payload.name))
     svc = Service(
         slug=slug,
@@ -118,8 +123,8 @@ async def create_service(
     db.add(svc)
     await db.flush()
     await record_audit(
-        db, actor_id=admin.id, action="service.create", target_id=svc.id,
-        detail={"slug": slug, "kind": payload.kind}, ip_address=client_ip(request),
+        db, actor_id=admin.id, action="service.create", target_id=None,
+        detail={"service_id": svc.id, "slug": slug, "kind": payload.kind}, ip_address=client_ip(request),
     )
     await db.commit()
     return _service_out(svc, 0)
@@ -154,8 +159,8 @@ async def update_service(
         svc.conn_write_enc = encrypt_secret(payload.conn_write)
         changed.append("conn_write")
     await record_audit(
-        db, actor_id=admin.id, action="service.update", target_id=svc.id,
-        detail={"slug": svc.slug, "fields": changed}, ip_address=client_ip(request),
+        db, actor_id=admin.id, action="service.update", target_id=None,
+        detail={"service_id": svc.id, "slug": svc.slug, "fields": changed}, ip_address=client_ip(request),
     )
     await db.commit()
     counts = await _grant_counts(db, [svc.id])
@@ -171,8 +176,8 @@ async def delete_service(
 ) -> OkResponse:
     svc = await _get_service(db, service_id)
     await record_audit(
-        db, actor_id=admin.id, action="service.delete", target_id=svc.id,
-        detail={"slug": svc.slug}, ip_address=client_ip(request),
+        db, actor_id=admin.id, action="service.delete", target_id=None,
+        detail={"service_id": svc.id, "slug": svc.slug}, ip_address=client_ip(request),
     )
     await db.delete(svc)  # grants/audit cascade
     await db.commit()
@@ -251,8 +256,8 @@ async def set_grant(
             )
         )
     await record_audit(
-        db, actor_id=admin.id, action="service.grant", target_id=service_id,
-        detail={"slug": svc.slug, "user_id": user_id, "level": payload.level},
+        db, actor_id=admin.id, action="service.grant", target_id=user_id,
+        detail={"service_id": service_id, "slug": svc.slug, "level": payload.level},
         ip_address=client_ip(request),
     )
     await db.commit()
@@ -274,8 +279,8 @@ async def revoke_grant(
         )
     )
     await record_audit(
-        db, actor_id=admin.id, action="service.revoke", target_id=service_id,
-        detail={"slug": svc.slug, "user_id": user_id}, ip_address=client_ip(request),
+        db, actor_id=admin.id, action="service.revoke", target_id=user_id,
+        detail={"service_id": service_id, "slug": svc.slug}, ip_address=client_ip(request),
     )
     await db.commit()
     return OkResponse()

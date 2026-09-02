@@ -98,6 +98,11 @@ class Settings(BaseSettings):
     service_rate_per_min: int = 30      # gateway tool calls per user per minute
     service_sql_row_limit: int = 1000   # max rows returned per run_query
     service_sql_timeout_s: int = 15     # per-query statement timeout
+    service_file_max_mb: int = 5        # max read_file size (files connector)
+    service_http_timeout_s: int = 15    # http connector GET timeout
+    services_root: str = "/data/services"        # published skill packages (volume)
+    # gateway URL as seen by the IN-PROCESS chat CLI (same container as backend)
+    service_gateway_base: str = "http://127.0.0.1:8000/mcp/svc"
     gitlab_default_host: str = "git.ecobin.ir"
 
     admin_username: str = "admin"

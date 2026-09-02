@@ -39,6 +39,7 @@ import ErrorState from '@/components/common/ErrorState';
 interface ServiceForm {
   name: string;
   description: string;
+  kind: 'sql' | 'files' | 'http';
   conn_read: string;
   conn_write: string;
   enabled: boolean;
@@ -47,9 +48,16 @@ interface ServiceForm {
 const emptyForm: ServiceForm = {
   name: '',
   description: '',
+  kind: 'sql',
   conn_read: '',
   conn_write: '',
   enabled: true,
+};
+
+const CONN_PLACEHOLDER: Record<ServiceForm['kind'], string> = {
+  sql: 'postgresql://user:pass@host:5432/db',
+  files: '/data/shared/reports',
+  http: '{"base_url": "https://api.example.com", "headers": {"X-Api-Key": "..."}}',
 };
 
 export default function AdminServicesPage() {
@@ -75,6 +83,7 @@ export default function AdminServicesPage() {
     setForm({
       name: svc.name,
       description: svc.description ?? '',
+      kind: svc.kind,
       conn_read: '',
       conn_write: '',
       enabled: svc.enabled,
@@ -88,7 +97,7 @@ export default function AdminServicesPage() {
         return adminServicesApi.create({
           name: form.name.trim(),
           description: form.description.trim() || null,
-          kind: 'sql',
+          kind: form.kind,
           conn_read: form.conn_read.trim(),
           conn_write: form.conn_write.trim() || null,
         });
@@ -135,6 +144,9 @@ export default function AdminServicesPage() {
 
       <Alert severity="info" sx={{ mb: 2 }}>
         {t('services.intro')}
+      </Alert>
+      <Alert severity="success" sx={{ mb: 2 }}>
+        {t('services.builderHint')}
       </Alert>
 
       <Paper>
@@ -245,14 +257,23 @@ export default function AdminServicesPage() {
               multiline
               minRows={2}
             />
-            <TextField select label={t('services.kind')} value="sql" fullWidth disabled>
+            <TextField
+              select
+              label={t('services.kind')}
+              value={form.kind}
+              onChange={(e) => setForm({ ...form, kind: e.target.value as ServiceForm['kind'] })}
+              fullWidth
+              disabled={editingId != null}
+            >
               <MenuItem value="sql">SQL (PostgreSQL)</MenuItem>
+              <MenuItem value="files">{t('services.kindFiles')}</MenuItem>
+              <MenuItem value="http">{t('services.kindHttp')}</MenuItem>
             </TextField>
             <TextField
               label={t('services.connRead')}
               value={form.conn_read}
               onChange={(e) => setForm({ ...form, conn_read: e.target.value })}
-              placeholder="postgresql://user:pass@host:5432/db"
+              placeholder={CONN_PLACEHOLDER[form.kind]}
               helperText={
                 editingId == null ? t('services.connReadHint') : t('services.connRotateHint')
               }

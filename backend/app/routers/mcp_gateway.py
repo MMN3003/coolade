@@ -49,9 +49,13 @@ def _tool_text(payload: dict[str, Any], *, is_error: bool = False) -> dict[str, 
 
 
 async def _resolve_caller(db, key: str) -> tuple[int, int | None] | None:
-    """key → (user_id, workspace_id|None); same dual auth as the raw relay."""
+    """key → (user_id, workspace_id|None). Three key kinds: in-memory turn key
+    (in-process chat CLI, DS6), workspace gateway key, personal API key."""
     if not key:
         return None
+    turn_user = org_services.resolve_turn_key(key)
+    if turn_user is not None:
+        return turn_user, None
     kh = hash_api_key(key)
     ws = (
         await db.execute(select(Workspace).where(Workspace.gateway_key_hash == kh))
@@ -211,6 +215,11 @@ async def mcp_service(slug: str, request: Request):
             return JSONResponse({"error": "invalid or missing key"}, status_code=401)
         user_id, workspace_id = caller
 
+        if slug == "_admin":
+            # Reserved management endpoint for the service-builder assistant
+            # (SV2, 2026-09-02): only admin users, tools from service_admin_tools.
+            return await _handle_admin(db, request, user_id)
+
         service = (
             await db.execute(select(Service).where(Service.slug == slug))
         ).scalar_one_or_none()
@@ -253,6 +262,71 @@ async def mcp_service(slug: str, request: Request):
         if not responses:
             return Response(status_code=202)  # notification(s) only
         return JSONResponse(responses if isinstance(body, list) else responses[0])
+
+
+async def _handle_admin(db, request: Request, user_id: int):
+    from app.models import User, UserRole
+    from app.services import service_admin_tools
+
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or user.role != UserRole.admin or not user.is_active:
+        return JSONResponse({"error": "admin only"}, status_code=403)
+
+    try:
+        body = json.loads(await request.body())
+    except json.JSONDecodeError:
+        return JSONResponse({"error": "bad json"}, status_code=400)
+
+    async def handle(msg: dict[str, Any]) -> dict[str, Any] | None:
+        method = msg.get("method")
+        msg_id = msg.get("id")
+        if msg_id is None:
+            return None
+        if method == "initialize":
+            proto = (msg.get("params") or {}).get("protocolVersion", PROTOCOL_FALLBACK)
+            return _rpc_result(
+                msg_id,
+                {
+                    "protocolVersion": proto,
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "ecocode-service-builder", "version": "1.0"},
+                },
+            )
+        if method == "ping":
+            return _rpc_result(msg_id, {})
+        if method == "tools/list":
+            return _rpc_result(msg_id, {"tools": service_admin_tools.ADMIN_TOOLS})
+        if method == "tools/call":
+            params = msg.get("params") or {}
+            tool = str(params.get("name", ""))
+            args = params.get("arguments") or {}
+            if not org_services.rate_limiter.allow(user_id):
+                return _rpc_result(
+                    msg_id, _tool_text({"error": "سقف فراخوانی در دقیقه؛ کمی بعد."}, is_error=True)
+                )
+            try:
+                result = await service_admin_tools.call_admin_tool(db, user, tool, args)
+                return _rpc_result(msg_id, _tool_text(result))
+            except org_services.SqlGuardError as exc:
+                return _rpc_result(msg_id, _tool_text({"error": str(exc)}, is_error=True))
+            except Exception as exc:
+                import logging
+
+                logging.getLogger("ecocode.mcp_gateway").exception(
+                    "admin tool %s failed for user %s", tool, user_id
+                )
+                await db.rollback()
+                return _rpc_result(
+                    msg_id,
+                    _tool_text({"error": f"خطای داخلی ({type(exc).__name__})."}, is_error=True),
+                )
+        return _rpc_error(msg_id, -32601, f"method not supported: {method}")
+
+    msgs = body if isinstance(body, list) else [body]
+    responses = [r for m in msgs if isinstance(m, dict) for r in [await handle(m)] if r is not None]
+    if not responses:
+        return Response(status_code=202)
+    return JSONResponse(responses if isinstance(body, list) else responses[0])
 
 
 @router.delete("/{slug}")

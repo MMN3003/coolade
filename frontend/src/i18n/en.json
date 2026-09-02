@@ -191,6 +191,9 @@
     "noGrants": "No users granted yet — without a grant, users cannot see this service at all.",
     "noServices": "No services defined yet.",
     "deleteConfirmTitle": "Delete service",
-    "deleteConfirmBody": "Delete “{{name}}” with all its grants and call history? This cannot be undone."
+    "deleteConfirmBody": "Delete “{{name}}” with all its grants and call history? This cannot be undone.",
+    "kindFiles": "Files (server path)",
+    "kindHttp": "HTTP API",
+    "builderHint": "Faster path: tell your assistant \"build a new service\" in chat — the service-builder connects, writes the skill, and grants access."
   }
 }

@@ -12,6 +12,7 @@ networks:
 
 volumes:
   postgres_data:
+  services_data:   # amendment-1: published service skill packages (/data/services)
   users_data:
   teams_data:
   attachments_data:
@@ -144,6 +145,7 @@ services:
       GITLAB_DEFAULT_HOST: ${GITLAB_DEFAULT_HOST:-git.ecobin.ir}
     volumes:
       - users_data:/data/users
+      - services_data:/data/services
       - teams_data:/data/teams
       - attachments_data:/data/attachments
       - claude_state:/home/app/.claude

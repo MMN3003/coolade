@@ -52,6 +52,38 @@ class _SlidingWindow:
 rate_limiter = _SlidingWindow(settings.service_rate_per_min)
 
 
+# ---------------------------------------------------------------- turn keys
+# The general-chat CLI runs IN-PROCESS in the backend container (not in an
+# ecows_* container), so it has no workspace gateway key. Before each turn,
+# cli_runner mints a short-lived key here and puts it in the generated
+# --mcp-config; the gateway resolves it from this in-memory map. Process
+# restart voids all keys — fine, the turn dies with the process anyway.
+_TURN_KEY_TTL_S = 6 * 3600
+_turn_keys: dict[str, tuple[int, float]] = {}  # key -> (user_id, expires_at)
+
+
+def mint_turn_key(user_id: int) -> str:
+    import secrets
+
+    now = time.monotonic()
+    for k in [k for k, (_, exp) in _turn_keys.items() if exp < now]:
+        _turn_keys.pop(k, None)
+    key = f"eco-turn-{secrets.token_urlsafe(24)}"
+    _turn_keys[key] = (user_id, now + _TURN_KEY_TTL_S)
+    return key
+
+
+def resolve_turn_key(key: str) -> int | None:
+    row = _turn_keys.get(key)
+    if not row:
+        return None
+    user_id, exp = row
+    if exp < time.monotonic():
+        _turn_keys.pop(key, None)
+        return None
+    return user_id
+
+
 # ---------------------------------------------------------------- tool defs
 def tools_for(service: Service, level: GrantLevel) -> list[dict[str, Any]]:
     """The MCP tools/list for this service filtered by the caller's grant.
@@ -86,7 +118,46 @@ def tools_for(service: Service, level: GrantLevel) -> list[dict[str, Any]]:
                 },
             },
         ]
-    # files / http connectors land in a later increment (P5a scope = sql pilot).
+    if service.kind == ServiceKind.files:
+        return [
+            {
+                "name": "list_dir",
+                "description": f"فهرست فایل‌ها/پوشه‌های سرویس «{service.name}» را برمی‌گرداند.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string", "description": "مسیر نسبی؛ خالی = ریشه"}},
+                },
+            },
+            {
+                "name": "read_file",
+                "description": (
+                    f"محتوای یک فایل متنی سرویس «{service.name}» را برمی‌گرداند "
+                    f"(حداکثر {settings.service_file_max_mb}MB)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"path": {"type": "string", "description": "مسیر نسبی فایل"}},
+                    "required": ["path"],
+                },
+            },
+        ]
+    if service.kind == ServiceKind.http:
+        return [
+            {
+                "name": "http_get",
+                "description": (
+                    f"یک درخواست GET به API سرویس «{service.name}» می‌زند (فقط مسیرهای زیر base_url مجاز)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "path": {"type": "string", "description": "مسیر نسبی، مثل /reports/summary"},
+                        "query": {"type": "object", "description": "پارامترهای query اختیاری"},
+                    },
+                    "required": ["path"],
+                },
+            },
+        ]
     return []
 
 
@@ -203,36 +274,136 @@ async def sql_run_query(dsn: str, sql: str) -> dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------- files connector
+def _resolve_under_root(root: str, rel: str) -> "os.PathLike[str]":
+    import os
+    from pathlib import Path
+
+    base = Path(root).resolve()
+    target = (base / rel.lstrip("/")).resolve()
+    if base != target and base not in target.parents:
+        raise SqlGuardError("مسیر خارج از محدودهٔ این سرویس است.")
+    if not os.path.exists(target):
+        raise SqlGuardError(f"مسیر یافت نشد: {rel or '/'}")
+    return target
+
+
+async def files_list_dir(root: str, rel: str) -> dict[str, Any]:
+    import asyncio
+    import os
+
+    def _ls() -> dict[str, Any]:
+        target = _resolve_under_root(root, rel)
+        if not os.path.isdir(target):
+            raise SqlGuardError("این مسیر پوشه نیست.")
+        entries = []
+        for name in sorted(os.listdir(target)):
+            p = os.path.join(target, name)
+            entries.append(
+                {
+                    "name": name,
+                    "type": "dir" if os.path.isdir(p) else "file",
+                    "size": None if os.path.isdir(p) else os.path.getsize(p),
+                }
+            )
+        return {"entries": entries, "row_count": len(entries)}
+
+    return await asyncio.to_thread(_ls)
+
+
+async def files_read(root: str, rel: str) -> dict[str, Any]:
+    import asyncio
+    import os
+
+    def _read() -> dict[str, Any]:
+        target = _resolve_under_root(root, rel)
+        if os.path.isdir(target):
+            raise SqlGuardError("این مسیر پوشه است، نه فایل.")
+        size = os.path.getsize(target)
+        cap = settings.service_file_max_mb * 1024 * 1024
+        if size > cap:
+            raise SqlGuardError(f"فایل بزرگ‌تر از سقف {settings.service_file_max_mb}MB است.")
+        with open(target, "rb") as f:
+            raw = f.read()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise SqlGuardError("فایل باینری است و به‌صورت متن قابل خواندن نیست.")
+        return {"content": text, "size": size, "row_count": size}
+
+    return await asyncio.to_thread(_read)
+
+
+# ---------------------------------------------------------------- http connector
+async def http_get(conn_json: str, path: str, query: dict[str, Any] | None) -> dict[str, Any]:
+    import httpx
+
+    try:
+        conf = json.loads(conn_json)
+        base = str(conf["base_url"]).rstrip("/")
+    except Exception:
+        raise SqlGuardError("پیکربندی اتصال HTTP نامعتبر است؛ به ادمین اطلاع دهید.")
+    rel = "/" + str(path).lstrip("/")
+    if "://" in str(path) or ".." in rel:
+        raise SqlGuardError("فقط مسیر نسبی زیر base_url مجاز است.")
+    headers = {str(k): str(v) for k, v in (conf.get("headers") or {}).items()}
+    async with httpx.AsyncClient(timeout=settings.service_http_timeout_s) as client:
+        resp = await client.get(base + rel, params=query or None, headers=headers)
+    body = resp.text
+    cap = 1024 * 1024
+    truncated = len(body) > cap
+    return {
+        "status": resp.status_code,
+        "body": body[:cap],
+        "truncated": truncated,
+        "row_count": len(body[:cap]),
+    }
+
+
 async def call_tool(service: Service, tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Execute a READ tool against the service's read connector. Raises
     SqlGuardError for layer-1 rejections; other exceptions = upstream errors."""
     from app.security import decrypt_secret
 
-    if service.kind != ServiceKind.sql:
-        raise SqlGuardError("این نوع connector هنوز پشتیبانی نمی‌شود.")
-    dsn = decrypt_secret(service.conn_read_enc)
-    if not dsn:
+    conn = decrypt_secret(service.conn_read_enc)
+    if not conn:
         raise SqlGuardError("اعتبارنامهٔ سرویس قابل بازیابی نیست؛ به ادمین اطلاع دهید.")
-    if tool == "list_tables":
-        return await sql_list_tables(dsn)
-    if tool == "describe_table":
-        return await sql_describe_table(dsn, str(arguments.get("table", "")))
-    if tool == "run_query":
-        return await sql_run_query(dsn, str(arguments.get("sql", "")))
+    if service.kind == ServiceKind.sql:
+        if tool == "list_tables":
+            return await sql_list_tables(conn)
+        if tool == "describe_table":
+            return await sql_describe_table(conn, str(arguments.get("table", "")))
+        if tool == "run_query":
+            return await sql_run_query(conn, str(arguments.get("sql", "")))
+    elif service.kind == ServiceKind.files:
+        if tool == "list_dir":
+            return await files_list_dir(conn, str(arguments.get("path", "")))
+        if tool == "read_file":
+            return await files_read(conn, str(arguments.get("path", "")))
+    elif service.kind == ServiceKind.http:
+        if tool == "http_get":
+            q = arguments.get("query")
+            return await http_get(conn, str(arguments.get("path", "")), q if isinstance(q, dict) else None)
     raise SqlGuardError(f"ابزار ناشناخته: {tool}")
 
 
-async def test_connection(service_kind: ServiceKind, dsn: str) -> tuple[bool, str]:
-    """Admin «تست اتصال» — SELECT 1 with the given (already decrypted) DSN.
+async def test_connection(service_kind: ServiceKind, conn: str) -> tuple[bool, str]:
+    """Admin «تست اتصال» with the (already decrypted) read connection.
     Error text goes to the admin only, never to end users."""
-    if service_kind != ServiceKind.sql:
-        return False, "تست اتصال فعلاً فقط برای connector نوع sql پشتیبانی می‌شود."
     try:
-        conn = await _pg_connect(dsn)
-        try:
-            await conn.fetchval("SELECT 1")
-        finally:
-            await conn.close()
-        return True, "اتصال برقرار شد (SELECT 1 موفق)."
-    except Exception as exc:  # admin-facing diagnostic; no secrets in asyncpg messages
+        if service_kind == ServiceKind.sql:
+            c = await _pg_connect(conn)
+            try:
+                await c.fetchval("SELECT 1")
+            finally:
+                await c.close()
+            return True, "اتصال برقرار شد (SELECT 1 موفق)."
+        if service_kind == ServiceKind.files:
+            res = await files_list_dir(conn, "")
+            return True, f"ریشه در دسترس است ({res['row_count']} مورد)."
+        if service_kind == ServiceKind.http:
+            res = await http_get(conn, "/", None)
+            return True, f"پاسخ base_url: HTTP {res['status']}."
+        return False, "نوع connector ناشناخته است."
+    except Exception as exc:  # admin-facing diagnostic; connectors never echo secrets
         return False, f"اتصال ناموفق: {type(exc).__name__}: {exc}"
