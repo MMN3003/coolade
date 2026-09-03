@@ -92,10 +92,14 @@ async def logout(response: Response, user: User = Depends(get_current_user)) -> 
 
 @router.get("/me", response_model=MeResponse)
 async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> MeResponse:
+    # Token economy: cheapest model first — the chat page defaults a NEW chat to
+    # allowed_models[0], so ordering by weight makes the cheap model the default
+    # without taking choice away.
     result = await db.execute(
         select(Model.model_key)
         .join(ModelPolicy, ModelPolicy.model_id == Model.id)
         .where(ModelPolicy.user_id == user.id, Model.is_enabled.is_(True))
+        .order_by(Model.input_weight.asc(), Model.model_key)
     )
     allowed_models = [r[0] for r in result.all()]
 

@@ -34,11 +34,13 @@ async def record_usage(
     cache_write_tokens: int = 0,
     api_key_id: int | None = None,
     request_id: str | None = None,
+    conversation_id: int | None = None,
 ) -> UsageLedger:
     credits = compute_credits(model, input_tokens, output_tokens, cache_read_tokens)
     entry = UsageLedger(
         user_id=user_id,
         api_key_id=api_key_id,
+        conversation_id=conversation_id,
         model_id=model.id,
         surface=surface,
         input_tokens=input_tokens,

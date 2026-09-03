@@ -127,7 +127,10 @@
     "fileDeleteConfirmBody": "Delete file “{{name}}”? This cannot be undone.",
     "fileSize": "Size",
     "fileModified": "Last modified",
-    "stopGeneration": "Stop generating"
+    "stopGeneration": "Stop generating",
+    "conversationCost": "This chat: {{cost}} credits",
+    "conversationCostHint": "Longer conversations make every new message pricier; a fresh chat is cheaper for a new topic.",
+    "costNudge": "This conversation has grown costly. Start a fresh one for new topics — say \"remember …\" first to keep any context in persistent memory."
   },
   "workspace": {
     "title": "Code Editor",

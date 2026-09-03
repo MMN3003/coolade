@@ -173,6 +173,10 @@ export interface Message {
 
 export interface ConversationDetail extends Conversation {
   messages: Message[];
+  /** Cumulative credits burned by this conversation (token-economy, 0009). */
+  credits_used: number;
+  /** Past this, the UI nudges starting a fresh conversation (0 = disabled). */
+  cost_nudge_threshold: number;
 }
 
 export interface CreateConversationRequest {

@@ -199,6 +199,13 @@ def _build_command(
     # prompt; it does NOT grant Bash/web (still in --disallowedTools) nor writes outside
     # the permitted dirs (e.g. /tmp, /etc still blocked) — verified 2026-08-23.
     cmd += ["--permission-mode", "acceptEdits"]
+    # Token economy: output tokens carry the highest ledger weight (15x), so a
+    # short standing instruction trims prose without touching real reports.
+    cmd += [
+        "--append-system-prompt",
+        "پاسخ‌ها را فشرده بده: بدون مقدمه، بدون تکرار سؤال، بدون جمع‌بندی تشریفاتی. "
+        "فقط وقتی صریحاً گزارش رسمی/مدیریتی یا متن بلند خواسته شده مفصل بنویس.",
+    ]
     # amendment-1 / DS6: granted organizational services ride in as MCP servers.
     # --strict-mcp-config pins the turn to exactly this generated file, so no
     # stray project/user config can add unaudited servers to a governed turn.
@@ -504,11 +511,11 @@ async def run_conversation_turn(
     # per-turn MCP config with a fresh turn key). Failure never blocks the turn —
     # the user just chats without service tools this once.
     mcp_config_path: str | None = None
-    service_slugs: list[str] = []
+    service_allowed_tools: list[str] = []
     try:
         from app.services.service_sync import sync_service_access
 
-        mcp_config_path, service_slugs = await sync_service_access(user_id, ws)
+        mcp_config_path, service_allowed_tools = await sync_service_access(user_id, ws)
     except Exception:  # pragma: no cover - degrade gracefully, never kill a turn
         logger.exception("service sync failed for user %s", user_id)
     # Account 5h reset hint for the actionable upstream-429 message (product-owner
@@ -525,13 +532,11 @@ async def run_conversation_turn(
         resume = resume_session_id
         for attempt in (1, 2):
             cmd = _build_command(prompt, upstream_model, resume, team_dirs, mcp_config_path)
-            if service_slugs:
-                # Server-level MCP permission (mcp__<server> allows all its tools)
-                # + the Skill tool so synced service skills are invocable headless;
-                # single comma-joined arg — the flag is variadic and must not
-                # swallow following args.
-                allowed = [f"mcp__{s}" for s in service_slugs] + ["Skill"]
-                cmd += ["--allowedTools", ",".join(allowed)]
+            if service_allowed_tools:
+                # Permission rules prepared by the sync (mcp__<server> per granted
+                # service + Skill when any skill is synced); single comma-joined
+                # arg — the flag is variadic and must not swallow following args.
+                cmd += ["--allowedTools", ",".join(service_allowed_tools)]
             # Hold back leading "start" events until real output arrives, so a
             # session-not-found first attempt is discarded invisibly and the
             # retry's own start event is the only one the caller ever sees.

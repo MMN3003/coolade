@@ -293,6 +293,10 @@ class UsageLedger(Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
+    # Token-economy (0009): which conversation this turn belonged to (web chat only).
+    conversation_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("conversations.id", ondelete="SET NULL")
+    )
     api_key_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("api_keys.id", ondelete="SET NULL")
     )

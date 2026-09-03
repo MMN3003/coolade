@@ -107,6 +107,9 @@ class Settings(BaseSettings):
     services_root: str = "/data/services"        # published skill packages (volume)
     # gateway URL as seen by the IN-PROCESS chat CLI (same container as backend)
     service_gateway_base: str = "http://127.0.0.1:8000/mcp/svc"
+    # Token economy: past this many credits in one conversation, the UI suggests
+    # starting a fresh (cheaper) one. 0 disables the nudge.
+    chat_cost_nudge_credits: int = 2000
     gitlab_default_host: str = "git.ecobin.ir"
 
     admin_username: str = "admin"

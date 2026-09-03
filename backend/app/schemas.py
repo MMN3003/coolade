@@ -87,6 +87,10 @@ class MessageOut(ORMModel):
 
 class ConversationDetailOut(ConversationOut):
     messages: list[MessageOut] = []
+    # Token-economy (0009): cumulative credits burned by this conversation and
+    # the admin-tunable threshold past which the UI nudges «گفتگوی جدید».
+    credits_used: Decimal = Decimal(0)
+    cost_nudge_threshold: Decimal = Decimal(0)
 
 
 class SendMessageRequest(BaseModel):

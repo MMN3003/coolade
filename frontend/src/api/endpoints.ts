@@ -236,7 +236,20 @@ export const conversationsApi = {
   list: (q?: string, limit = 50, offset = 0) =>
     api.get<Conversation[]>('/api/conversations', { q, limit, offset }),
   create: (body: CreateConversationRequest) => api.post<Conversation>('/api/conversations', body),
-  get: (id: number) => api.get<ConversationDetail>(`/api/conversations/${id}`),
+  get: async (id: number): Promise<ConversationDetail> => {
+    // Decimal fields arrive as strings from pydantic — normalize to numbers.
+    const raw = await api.get<
+      Omit<ConversationDetail, 'credits_used' | 'cost_nudge_threshold'> & {
+        credits_used?: string | number;
+        cost_nudge_threshold?: string | number;
+      }
+    >(`/api/conversations/${id}`);
+    return {
+      ...raw,
+      credits_used: Number(raw.credits_used ?? 0),
+      cost_nudge_threshold: Number(raw.cost_nudge_threshold ?? 0),
+    };
+  },
   update: (id: number, body: UpdateConversationRequest) =>
     api.patch<Conversation>(`/api/conversations/${id}`, body),
   remove: (id: number) => api.delete<Record<string, unknown>>(`/api/conversations/${id}`),

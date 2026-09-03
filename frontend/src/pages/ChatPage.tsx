@@ -5,6 +5,8 @@ import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Alert from '@mui/material/Alert';
 import IconButton from '@mui/material/IconButton';
+import Chip from '@mui/material/Chip';
+import Button from '@mui/material/Button';
 import Tooltip from '@mui/material/Tooltip';
 import FolderOutlinedIcon from '@mui/icons-material/FolderOutlined';
 import { useTranslation } from 'react-i18next';
@@ -294,6 +296,10 @@ export default function ChatPage() {
 
   const noModelsAllowed = allowedModels.length === 0;
 
+  const conversationCost = conversationQuery.data?.credits_used ?? 0;
+  const nudgeThreshold = conversationQuery.data?.cost_nudge_threshold ?? 0;
+  const costNudge = nudgeThreshold > 0 && conversationCost >= nudgeThreshold;
+
   const loadingConversation = !!conversationId && conversationQuery.isLoading;
   const erroredConversation = !!conversationId && conversationQuery.isError;
   const hasLiveBubble = stream.state.assistantMessageId !== null;
@@ -381,9 +387,37 @@ export default function ChatPage() {
               onChange={handleThinkingLevelChange}
             />
           </Box>
-          {/* Spacer to keep the pills visually centered opposite the toggle. */}
-          <Box sx={{ width: 34, flexShrink: 0 }} />
+          {/* Token economy: cumulative cost of this conversation (visible = managed). */}
+          {conversationCost > 0 ? (
+            <Tooltip title={t('chat.conversationCostHint')}>
+              <Chip
+                size="small"
+                variant="outlined"
+                label={t('chat.conversationCost', {
+                  cost: Math.round(conversationCost).toLocaleString('fa-IR'),
+                })}
+                sx={{ flexShrink: 0 }}
+              />
+            </Tooltip>
+          ) : (
+            /* Spacer to keep the pills visually centered opposite the toggle. */
+            <Box sx={{ width: 34, flexShrink: 0 }} />
+          )}
         </Box>
+
+        {costNudge && (
+          <Alert
+            severity="info"
+            sx={{ borderRadius: 0 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => navigate('/chat')}>
+                {t('chat.newConversation')}
+              </Button>
+            }
+          >
+            {t('chat.costNudge')}
+          </Alert>
+        )}
 
         {noModelsAllowed && (
           <Alert severity="warning" sx={{ borderRadius: 0 }}>

@@ -134,8 +134,24 @@ async def get_conversation(
     msgs = await db.execute(
         select(Message).where(Message.conversation_id == conv.id).order_by(Message.created_at)
     )
+    from sqlalchemy import func as sa_func
+
+    from app.models import UsageLedger
+
+    credits_used = (
+        await db.execute(
+            select(sa_func.coalesce(sa_func.sum(UsageLedger.credits), 0)).where(
+                UsageLedger.conversation_id == conv.id
+            )
+        )
+    ).scalar_one()
     out = _conv_to_out(conv, model_key)
-    return ConversationDetailOut(**out.model_dump(), messages=list(msgs.scalars().all()))
+    return ConversationDetailOut(
+        **out.model_dump(),
+        messages=list(msgs.scalars().all()),
+        credits_used=credits_used,
+        cost_nudge_threshold=settings.chat_cost_nudge_credits,
+    )
 
 
 @router.patch("/conversations/{conversation_id}", response_model=ConversationOut)
@@ -258,6 +274,7 @@ async def _run_turn_background(
                         cache_read_tokens=usage["cache_read_tokens"],
                         cache_write_tokens=usage["cache_write_tokens"],
                         request_id=ev.get("session_id") or session_id_captured,
+                        conversation_id=conversation_id,
                     )
                     final_text = ev.get("result_text") or "".join(assistant_text_parts)
                     msg = await sdb.get(Message, assistant_message_id)
