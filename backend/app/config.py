@@ -96,7 +96,11 @@ class Settings(BaseSettings):
 
     # --- amendment-1: organizational services / MCP gateway (docs/SERVICES-V2.md SV9) ---
     service_rate_per_min: int = 30      # gateway tool calls per user per minute
-    service_sql_row_limit: int = 1000   # max rows returned per run_query
+    # Max rows per run_query. Every returned row lands in the model's context
+    # FOREVER (it rides along every later turn of that conversation as cache
+    # writes/reads) — so the default is deliberately small; reports should
+    # aggregate in SQL. Per-service override: services.config["row_limit"].
+    service_sql_row_limit: int = 200
     service_sql_timeout_s: int = 15     # per-query statement timeout
     service_file_max_mb: int = 5        # max read_file size (files connector)
     service_http_timeout_s: int = 15    # http connector GET timeout

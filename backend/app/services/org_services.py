@@ -109,7 +109,7 @@ def tools_for(service: Service, level: GrantLevel) -> list[dict[str, Any]]:
                 "name": "run_query",
                 "description": (
                     f"یک کوئری SELECT روی سرویس «{service.name}» اجرا می‌کند و ردیف‌ها را "
-                    f"برمی‌گرداند (حداکثر {settings.service_sql_row_limit} ردیف). فقط SELECT مجاز است."
+                    f"برمی‌گرداند (حداکثر {service_row_limit(service)} ردیف). فقط SELECT مجاز است."
                 ),
                 "inputSchema": {
                     "type": "object",
@@ -195,6 +195,18 @@ def clean_read_sql(sql: str) -> str:
 
 def _jsonable(value: Any) -> Any:
     return value if isinstance(value, (str, int, float, bool, type(None))) else str(value)
+
+
+def service_row_limit(service: "Service") -> int:
+    """services.config["row_limit"] overrides the global default, clamped to
+    a sane band so a typo can't blow the context (or starve a report)."""
+    try:
+        override = int((service.config or {}).get("row_limit", 0))
+    except (TypeError, ValueError):
+        override = 0
+    if override > 0:
+        return max(10, min(override, 5000))
+    return settings.service_sql_row_limit
 
 
 def _is_oracle_dsn(dsn: str) -> bool:
@@ -287,9 +299,9 @@ async def ora_describe_table(dsn: str, table: str) -> dict[str, Any]:
         await conn.close()
 
 
-async def ora_run_query(dsn: str, sql: str) -> dict[str, Any]:
+async def ora_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[str, Any]:
     cleaned = clean_read_sql(sql)
-    limit = settings.service_sql_row_limit
+    limit = limit or settings.service_sql_row_limit
     # Oracle: no `AS` in table aliases; row cap via FETCH FIRST (12c+).
     wrapped = f"SELECT * FROM ({cleaned}) ecocode_sub FETCH FIRST {limit + 1} ROWS ONLY"
     conn = await _ora_connect(dsn)
@@ -363,9 +375,9 @@ async def sql_describe_table(dsn: str, table: str) -> dict[str, Any]:
         await conn.close()
 
 
-async def sql_run_query(dsn: str, sql: str) -> dict[str, Any]:
+async def sql_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[str, Any]:
     cleaned = clean_read_sql(sql)
-    limit = settings.service_sql_row_limit
+    limit = limit or settings.service_sql_row_limit
     # Wrapping (legal for SELECT and WITH subqueries in PG) bounds the result
     # server-side; +1 row detects truncation honestly.
     wrapped = f"SELECT * FROM ({cleaned}) AS _ecocode_sub LIMIT {limit + 1}"
@@ -487,7 +499,8 @@ async def call_tool(service: Service, tool: str, arguments: dict[str, Any]) -> d
             return await (ora_describe_table(conn, table) if oracle else sql_describe_table(conn, table))
         if tool == "run_query":
             q = str(arguments.get("sql", ""))
-            return await (ora_run_query(conn, q) if oracle else sql_run_query(conn, q))
+            lim = service_row_limit(service)
+            return await (ora_run_query(conn, q, lim) if oracle else sql_run_query(conn, q, lim))
     elif service.kind == ServiceKind.files:
         if tool == "list_dir":
             return await files_list_dir(conn, str(arguments.get("path", "")))
