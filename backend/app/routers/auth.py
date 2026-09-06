@@ -8,7 +8,14 @@ from app.config import get_settings
 from app.deps import client_ip, get_current_user, get_db
 from app.errors import unauthorized, rate_limited
 from app.models import Model, ModelPolicy, Team, TeamMember, User
-from app.schemas import LoginRequest, MeQuotaSummary, MeResponse, MeTeamOut, OkResponse
+from app.schemas import (
+    ChangePasswordRequest,
+    LoginRequest,
+    MeQuotaSummary,
+    MeResponse,
+    MeTeamOut,
+    OkResponse,
+)
 from app.security import create_session_cookie, login_attempts, verify_password
 from app.services import thinking as thinking_service
 from app.services.audit import record_audit
@@ -87,6 +94,39 @@ async def login(
 @router.post("/logout", response_model=OkResponse)
 async def logout(response: Response, user: User = Depends(get_current_user)) -> OkResponse:
     response.delete_cookie(settings.session_cookie_name, path="/")
+    return OkResponse()
+
+
+@router.post("/change-password", response_model=OkResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    user: User = Depends(get_current_user),
+    ip: str = Depends(client_ip),
+    db: AsyncSession = Depends(get_db),
+) -> OkResponse:
+    """Self-service password change (local accounts only — LDAP passwords are
+    the organization directory's business). Requires the current password;
+    audited without ever storing either value."""
+    from app.errors import bad_request
+    from app.models import AuthSource
+    from app.security import hash_password
+
+    if user.auth_source != AuthSource.local:
+        raise bad_request("رمز عبور شما از طریق LDAP سازمان مدیریت می‌شود و از این‌جا قابل تغییر نیست.")
+    # Same throttle store as login (distinct bucket) so a stolen session can't
+    # brute-force the current password through this endpoint.
+    bucket = f"pw:{user.username}"
+    if login_attempts.is_blocked(bucket, ip):
+        raise rate_limited("تلاش بیش از حد؛ کمی بعد دوباره امتحان کنید.")
+    if not verify_password(user.password_hash, body.current_password):
+        login_attempts.record_failure(bucket, ip)
+        raise unauthorized("رمز عبور فعلی نادرست است.")
+    login_attempts.record_success(bucket, ip)
+    user.password_hash = hash_password(body.new_password)
+    await record_audit(
+        db, actor_id=user.id, action="auth.change_password", target_id=user.id, ip_address=ip
+    )
+    await db.commit()
     return OkResponse()
 
 

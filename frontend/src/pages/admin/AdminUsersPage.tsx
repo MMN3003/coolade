@@ -27,6 +27,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircleOutline';
 import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import TuneIcon from '@mui/icons-material/TuneOutlined';
 import AssessmentOutlinedIcon from '@mui/icons-material/AssessmentOutlined';
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
 import { useTranslation } from 'react-i18next';
 import { adminUsersApi, plansApi } from '@/api/endpoints';
 import type { AdminUser, AuthSource, CreateUserRequest, UserRole } from '@/api/types';
@@ -55,6 +56,17 @@ export default function AdminUsersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<CreateUserRequest>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<AdminUser | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null);
+  const [newPassword, setNewPassword] = useState('');
+
+  const setPasswordMutation = useMutation({
+    mutationFn: (vars: { id: number; password: string }) =>
+      adminUsersApi.update(vars.id, { password: vars.password }),
+    onSuccess: () => {
+      setPasswordTarget(null);
+      setNewPassword('');
+    },
+  });
 
   const createMutation = useMutation({
     mutationFn: (body: CreateUserRequest) => adminUsersApi.create(body),
@@ -177,6 +189,13 @@ export default function AdminUsersPage() {
                           <AssessmentOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
+                      {u.auth_source === 'local' && (
+                        <Tooltip title={t('admin.users.setPassword')}>
+                          <IconButton size="small" onClick={() => setPasswordTarget(u)}>
+                            <KeyOutlinedIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       <Tooltip title={u.is_active ? t('admin.users.deactivate') : t('admin.users.activate')}>
                         <IconButton size="small" onClick={() => toggleActiveMutation.mutate(u)}>
                           {u.is_active ? <BlockIcon fontSize="small" /> : <CheckCircleIcon fontSize="small" />}
@@ -285,6 +304,59 @@ export default function AdminUsersPage() {
             }
           >
             {t('common.create')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Admin: set a local user's password (write-only; min 8 chars). */}
+      <Dialog
+        open={!!passwordTarget}
+        onClose={() => {
+          setPasswordTarget(null);
+          setNewPassword('');
+          setPasswordMutation.reset();
+        }}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>
+          {t('admin.users.setPasswordTitle', { name: passwordTarget?.username ?? '' })}
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label={t('auth.newPassword')}
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              helperText={t('auth.passwordMinLength')}
+              autoComplete="new-password"
+              fullWidth
+              autoFocus
+            />
+            {setPasswordMutation.isError && (
+              <Alert severity="error">{getErrorMessage(setPasswordMutation.error)}</Alert>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setPasswordTarget(null);
+              setNewPassword('');
+            }}
+          >
+            {t('common.cancel')}
+          </Button>
+          <Button
+            variant="contained"
+            disabled={newPassword.length < 8 || setPasswordMutation.isPending}
+            onClick={() =>
+              passwordTarget &&
+              setPasswordMutation.mutate({ id: passwordTarget.id, password: newPassword })
+            }
+          >
+            {t('common.save')}
           </Button>
         </DialogActions>
       </Dialog>

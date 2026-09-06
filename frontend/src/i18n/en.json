@@ -51,7 +51,14 @@
     "loginButton": "Sign in",
     "loginError": "Incorrect username or password.",
     "loggingIn": "Signing in…",
-    "logout": "Sign out"
+    "logout": "Sign out",
+    "changePassword": "Change password",
+    "currentPassword": "Current password",
+    "newPassword": "New password",
+    "confirmPassword": "Repeat new password",
+    "passwordMinLength": "At least 8 characters",
+    "passwordMismatch": "Does not match the new password",
+    "passwordChanged": "Password changed successfully."
   },
   "nav": {
     "chat": "Chat",
@@ -198,5 +205,11 @@
     "kindFiles": "Files (server path)",
     "kindHttp": "HTTP API",
     "builderHint": "Faster path: tell your assistant \"build a new service\" in chat — the service-builder connects, writes the skill, and grants access."
+  },
+  "admin": {
+    "users": {
+      "setPassword": "Set password",
+      "setPasswordTitle": "Set a new password for {{name}}"
+    }
   }
 }

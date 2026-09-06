@@ -52,7 +52,14 @@
     "loginButton": "ورود",
     "loginError": "نام کاربری یا رمز عبور نادرست است.",
     "loggingIn": "در حال ورود…",
-    "logout": "خروج"
+    "logout": "خروج",
+    "changePassword": "تغییر رمز عبور",
+    "currentPassword": "رمز عبور فعلی",
+    "newPassword": "رمز عبور جدید",
+    "confirmPassword": "تکرار رمز عبور جدید",
+    "passwordMinLength": "حداقل ۸ کاراکتر",
+    "passwordMismatch": "با رمز جدید یکسان نیست",
+    "passwordChanged": "رمز عبور با موفقیت تغییر کرد."
   },
   "nav": {
     "chat": "چت",
@@ -202,7 +209,9 @@
       "deleteConfirmTitle": "حذف کاربر",
       "deleteConfirmBody": "این کاربر و همهٔ کلیدهای او حذف/باطل شوند؟",
       "editPolicyQuota": "سیاست و سهمیه",
-      "usageReport": "گزارش مصرف"
+      "usageReport": "گزارش مصرف",
+      "setPassword": "تغییر رمز عبور",
+      "setPasswordTitle": "تعیین رمز جدید برای «{{name}}»"
     },
     "teams": {
       "title": "مدیریت تیم‌ها",

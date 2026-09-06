@@ -227,6 +227,9 @@ export const authApi = {
   /** Login sets the session cookie and returns {ok}; the user comes from me(). */
   login: (body: LoginRequest) => api.post<OkResponse>('/api/auth/login', body),
   logout: () => api.post<OkResponse>('/api/auth/logout'),
+  /** Local accounts only — the backend rejects LDAP users with a clear message. */
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    api.post<OkResponse>('/api/auth/change-password', body),
   me: async (): Promise<MeResponse> => parseMe(await api.get<MeResponseWire>('/api/auth/me')),
 };
 

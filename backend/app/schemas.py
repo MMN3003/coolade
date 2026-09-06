@@ -206,7 +206,7 @@ class UserCreate(BaseModel):
     email: EmailStr | None = None
     role: Literal["admin", "user"] = "user"
     auth_source: Literal["local", "ldap"] = "local"
-    password: str | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=200)
     # User Plans / Tiers: if set, the plan is applied on create (quota + models + thinking cap).
     plan_id: int | None = None
 
@@ -216,7 +216,7 @@ class UserUpdate(BaseModel):
     email: EmailStr | None = None
     role: Literal["admin", "user"] | None = None
     is_active: bool | None = None
-    password: str | None = None
+    password: str | None = Field(default=None, min_length=8, max_length=200)
     # User Plans / Tiers: present-and-non-null re-applies that plan; present-and-null clears
     # the plan association (leaving the user's current quota/policy untouched).
     plan_id: int | None = None
@@ -484,6 +484,12 @@ class HealthOut(BaseModel):
     upstream_mode: str
     upstream_connected: bool
     cli_available: bool
+
+
+# ---------- auth: self-service password change ----------
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=200)
 
 
 # ---------- Admin: organizational services (amendment-1, docs/SERVICES-V2.md) ----------

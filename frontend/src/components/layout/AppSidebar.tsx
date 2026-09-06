@@ -31,6 +31,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import CloseIcon from '@mui/icons-material/Close';
 import MenuOpenIcon from '@mui/icons-material/MenuOpen';
 import LogoutIcon from '@mui/icons-material/LogoutOutlined';
+import KeyOutlinedIcon from '@mui/icons-material/KeyOutlined';
 import ChatIcon from '@mui/icons-material/ChatBubbleOutline';
 import CodeIcon from '@mui/icons-material/CodeOutlined';
 import TerminalIcon from '@mui/icons-material/TerminalOutlined';
@@ -45,6 +46,7 @@ import MemoryIcon from '@mui/icons-material/MemoryOutlined';
 import CardMembershipIcon from '@mui/icons-material/CardMembershipOutlined';
 import CloudSyncIcon from '@mui/icons-material/CloudSyncOutlined';
 import HubIcon from '@mui/icons-material/HubOutlined';
+import ChangePasswordDialog from '@/components/common/ChangePasswordDialog';
 import HistoryIcon from '@mui/icons-material/HistoryOutlined';
 import LightModeIcon from '@mui/icons-material/LightModeOutlined';
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
@@ -101,6 +103,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
   const [renameValue, setRenameValue] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Conversation | null>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
 
   const listQuery = useQuery({
     queryKey: ['conversations', debouncedSearch],
@@ -433,6 +436,19 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
             </MenuItem>
           )}
           {!!user?.teams?.length && <Divider />}
+          {user?.auth_source !== 'ldap' && (
+            <MenuItem
+              onClick={() => {
+                setMenuAnchor(null);
+                setPwOpen(true);
+              }}
+            >
+              <ListItemIcon>
+                <KeyOutlinedIcon fontSize="small" />
+              </ListItemIcon>
+              {t('auth.changePassword')}
+            </MenuItem>
+          )}
           <MenuItem onClick={handleLogout}>
             <ListItemIcon>
               <LogoutIcon fontSize="small" />
@@ -440,6 +456,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
             {t('auth.logout')}
           </MenuItem>
         </Menu>
+        <ChangePasswordDialog open={pwOpen} onClose={() => setPwOpen(false)} />
       </Box>
 
       <Dialog open={!!deleteTarget} onClose={() => setDeleteTarget(null)}>
