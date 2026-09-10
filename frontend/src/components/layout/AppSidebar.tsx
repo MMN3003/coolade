@@ -46,6 +46,7 @@ import MemoryIcon from '@mui/icons-material/MemoryOutlined';
 import CardMembershipIcon from '@mui/icons-material/CardMembershipOutlined';
 import CloudSyncIcon from '@mui/icons-material/CloudSyncOutlined';
 import HubIcon from '@mui/icons-material/HubOutlined';
+import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import ChangePasswordDialog from '@/components/common/ChangePasswordDialog';
 import HistoryIcon from '@mui/icons-material/HistoryOutlined';
 import LightModeIcon from '@mui/icons-material/LightModeOutlined';
@@ -140,6 +141,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
     { label: t('nav.usage'), icon: <BarChartIcon />, path: '/usage' },
     { label: t('nav.keys'), icon: <KeyIcon />, path: '/keys' },
     { label: t('nav.teams'), icon: <GroupsOutlinedIcon />, path: '/teams' },
+    { label: t('nav.knowledge'), icon: <PsychologyOutlinedIcon />, path: '/knowledge' },
   ];
 
   const adminItems: NavItem[] = [
@@ -150,6 +152,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
     { label: t('nav.adminModels'), icon: <MemoryIcon />, path: '/admin/models' },
     { label: t('nav.plans'), icon: <CardMembershipIcon />, path: '/admin/plans' },
     { label: t('nav.services'), icon: <HubIcon />, path: '/admin/services' },
+    { label: t('nav.adminKnowledge'), icon: <PsychologyOutlinedIcon />, path: '/admin/knowledge' },
     { label: t('nav.adminSettings'), icon: <CloudSyncIcon />, path: '/admin/settings' },
     { label: t('nav.adminAudit'), icon: <HistoryIcon />, path: '/admin/audit' },
   ];

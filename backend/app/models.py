@@ -105,6 +105,8 @@ class User(Base):
     # Per-user cap for the web-chat thinking-level picker (NULL = fall back to the
     # global THINKING_MAX_LEVEL env cap). Set from the plan on inheritance.
     max_thinking_level: Mapped[ThinkingLevel | None] = mapped_column(thinking_level_enum)
+    # Knowledge layer (0010): per-user opt-out of learning from their own chats.
+    learning_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -333,6 +335,8 @@ class Conversation(Base):
     thinking_level: Mapped[ThinkingLevel] = mapped_column(
         thinking_level_enum, nullable=False, default=ThinkingLevel.standard
     )
+    # Knowledge layer (0010): learning-job cursor — last message id already digested.
+    learned_through_message_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )
@@ -621,4 +625,82 @@ class ServiceAudit(Base):
     result_rows: Mapped[int | None] = mapped_column(Integer)  # rows for sql, bytes for files
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class KnowledgeScope(str, enum.Enum):
+    service = "service"            # admin: rules/knowledge for everyone using a service
+    user_service = "user_service"  # one user's rules/knowledge for one service
+    user = "user"                  # one user's own rules/knowledge (self- or admin-written, or learned)
+    team = "team"                  # a team's shared rules/knowledge
+
+
+class KnowledgeKind(str, enum.Enum):
+    rule = "rule"            # must-follow instruction → always in the system prompt
+    knowledge = "knowledge"  # facts/data → inlined while small, spilled to files when large
+
+
+class KnowledgeSource(str, enum.Enum):
+    manual = "manual"
+    learned = "learned"
+
+
+knowledge_scope_enum = PgEnum(KnowledgeScope, name="knowledge_scope", create_type=False)
+knowledge_kind_enum = PgEnum(KnowledgeKind, name="knowledge_kind", create_type=False)
+knowledge_source_enum = PgEnum(KnowledgeSource, name="knowledge_source", create_type=False)
+
+
+class KnowledgeEntry(Base):
+    """Knowledge layer (amendment-7, docs/KNOWLEDGE.md). One rule or knowledge
+    item at exactly one scope (CHECK constraint chk_knowledge_scope_keys).
+
+    How it reaches the agent (app/services/knowledge.py):
+      * user / team scopes → compiled per turn into --append-system-prompt
+        (rules always inline; knowledge inline up to a budget, then files);
+      * service / user_service scopes → appended to the synced service skill
+        (SKILL.md) so they load exactly when that service is used.
+    `source=learned` rows were extracted from the user's own chats by the
+    learning job (app/services/learning.py) and are reviewable/deletable by
+    the user in «دانش من»."""
+
+    __tablename__ = "knowledge_entries"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    scope: Mapped[KnowledgeScope] = mapped_column(knowledge_scope_enum, nullable=False)
+    kind: Mapped[KnowledgeKind] = mapped_column(
+        knowledge_kind_enum, nullable=False, default=KnowledgeKind.knowledge
+    )
+    source: Mapped[KnowledgeSource] = mapped_column(
+        knowledge_source_enum, nullable=False, default=KnowledgeSource.manual
+    )
+    service_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("services.id", ondelete="CASCADE")
+    )
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE")
+    )
+    team_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("teams.id", ondelete="CASCADE")
+    )
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    learned_from_conversation_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("conversations.id", ondelete="SET NULL")
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="SET NULL")
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        Index("idx_knowledge_service", "service_id"),
+        Index("idx_knowledge_user", "user_id"),
+        Index("idx_knowledge_team", "team_id"),
     )

@@ -19,6 +19,7 @@ const KeysPage = lazy(() => import('@/pages/KeysPage'));
 const HelpPage = lazy(() => import('@/pages/HelpPage'));
 const TeamsPage = lazy(() => import('@/pages/TeamsPage'));
 const TeamMemoryPage = lazy(() => import('@/pages/TeamMemoryPage'));
+const KnowledgePage = lazy(() => import('@/pages/KnowledgePage'));
 const AdminUsersPage = lazy(() => import('@/pages/admin/AdminUsersPage'));
 const AdminUserUsagePage = lazy(() => import('@/pages/admin/AdminUserUsagePage'));
 const AdminTeamsPage = lazy(() => import('@/pages/admin/AdminTeamsPage'));
@@ -28,6 +29,7 @@ const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
 const AdminModelsPage = lazy(() => import('@/pages/admin/AdminModelsPage'));
 const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'));
 const AdminServicesPage = lazy(() => import('@/pages/admin/AdminServicesPage'));
+const AdminKnowledgePage = lazy(() => import('@/pages/admin/AdminKnowledgePage'));
 const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage'));
 const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'));
 import NotFoundPage from '@/pages/NotFoundPage';
@@ -70,6 +72,7 @@ export default function App() {
             <Route path="/keys" element={<KeysPage />} />
             <Route path="/teams" element={<TeamsPage />} />
             <Route path="/teams/:teamId/memory" element={<TeamMemoryPage />} />
+            <Route path="/knowledge" element={<KnowledgePage />} />
             <Route path="/help" element={<HelpPage />} />
 
             <Route element={<RequireAdmin />}>
@@ -82,6 +85,7 @@ export default function App() {
               <Route path="/admin/models" element={<AdminModelsPage />} />
               <Route path="/admin/plans" element={<AdminPlansPage />} />
               <Route path="/admin/services" element={<AdminServicesPage />} />
+              <Route path="/admin/knowledge" element={<AdminKnowledgePage />} />
               <Route path="/admin/settings" element={<AdminSettingsPage />} />
               <Route path="/admin/audit" element={<AdminAuditPage />} />
             </Route>

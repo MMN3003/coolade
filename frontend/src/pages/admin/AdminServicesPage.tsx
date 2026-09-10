@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
@@ -29,12 +29,14 @@ import EditIcon from '@mui/icons-material/EditOutlined';
 import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import GroupIcon from '@mui/icons-material/GroupOutlined';
 import CableIcon from '@mui/icons-material/CableOutlined';
+import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import { useTranslation } from 'react-i18next';
-import { adminServicesApi, adminUsersApi } from '@/api/endpoints';
+import { adminKnowledgeApi, adminServicesApi, adminUsersApi } from '@/api/endpoints';
 import type { OrgService, ServiceGrantLevel } from '@/api/types';
 import { getErrorMessage } from '@/utils/errors';
 import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
+import KnowledgeEntriesEditor from '@/components/knowledge/KnowledgeEntriesEditor';
 
 interface ServiceForm {
   name: string;
@@ -70,6 +72,7 @@ export default function AdminServicesPage() {
   const [form, setForm] = useState<ServiceForm>(emptyForm);
   const [deleteTarget, setDeleteTarget] = useState<OrgService | null>(null);
   const [grantsTarget, setGrantsTarget] = useState<OrgService | null>(null);
+  const [knowledgeTarget, setKnowledgeTarget] = useState<OrgService | null>(null);
   const [snack, setSnack] = useState<string | null>(null);
 
   function openCreate() {
@@ -208,6 +211,11 @@ export default function AdminServicesPage() {
                           onClick={() => testMutation.mutate(s.id)}
                         >
                           <CableIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title={t('services.knowledge')}>
+                        <IconButton size="small" onClick={() => setKnowledgeTarget(s)}>
+                          <PsychologyOutlinedIcon fontSize="small" />
                         </IconButton>
                       </Tooltip>
                       <Tooltip title={t('services.manageGrants')}>
@@ -352,6 +360,9 @@ export default function AdminServicesPage() {
       {grantsTarget && (
         <GrantsDialog service={grantsTarget} onClose={() => setGrantsTarget(null)} />
       )}
+      {knowledgeTarget && (
+        <ServiceKnowledgeDialog service={knowledgeTarget} onClose={() => setKnowledgeTarget(null)} />
+      )}
 
       <Snackbar
         open={!!snack}
@@ -489,6 +500,73 @@ function GrantsDialog({ service, onClose }: { service: OrgService; onClose: () =
               {getErrorMessage(setMutation.error ?? revokeMutation.error)}
             </Alert>
           )}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose}>{t('common.close')}</Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+/**
+ * amendment-7 (docs/KNOWLEDGE.md) — service-scope rules/knowledge (for every
+ * granted user, applied whenever the assistant uses this service) plus the
+ * per-user×service variant, picked from the service's current grants.
+ */
+function ServiceKnowledgeDialog({ service, onClose }: { service: OrgService; onClose: () => void }) {
+  const { t } = useTranslation();
+  const grantsQuery = useQuery({
+    queryKey: ['admin', 'services', service.id, 'grants'],
+    queryFn: () => adminServicesApi.grants(service.id),
+  });
+  const [userId, setUserId] = useState<number | ''>('');
+  const serviceApi = useMemo(() => adminKnowledgeApi.service(service.id), [service.id]);
+  const userApi = useMemo(
+    () => (userId !== '' ? adminKnowledgeApi.userService(service.id, Number(userId)) : null),
+    [service.id, userId],
+  );
+
+  return (
+    <Dialog open onClose={onClose} maxWidth="md" fullWidth>
+      <DialogTitle>{t('services.knowledgeTitle', { name: service.name })}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={3} sx={{ mt: 1 }}>
+          <KnowledgeEntriesEditor
+            api={serviceApi}
+            queryKey={['admin', 'knowledge', 'services', service.id]}
+            hint={t('services.knowledgeIntro')}
+            dense
+          />
+          <Box>
+            <Typography fontWeight={600} gutterBottom>
+              {t('services.knowledgeForUser')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+              {t('services.knowledgeForUserHint')}
+            </Typography>
+            <TextField
+              select
+              size="small"
+              label={t('services.pickUser')}
+              value={userId}
+              onChange={(e) => setUserId(Number(e.target.value))}
+              sx={{ minWidth: 280, mb: 1.5 }}
+            >
+              {(grantsQuery.data ?? []).map((g) => (
+                <MenuItem key={g.user_id} value={g.user_id}>
+                  {g.display_name || g.username}
+                </MenuItem>
+              ))}
+            </TextField>
+            {userApi && (
+              <KnowledgeEntriesEditor
+                api={userApi}
+                queryKey={['admin', 'knowledge', 'services', service.id, 'users', userId]}
+                dense
+              />
+            )}
+          </Box>
         </Stack>
       </DialogContent>
       <DialogActions>

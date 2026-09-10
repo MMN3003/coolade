@@ -49,7 +49,7 @@ export type UserRole = 'admin' | 'user';
 export type AuthSource = 'local' | 'ldap';
 export type QuotaPeriod = 'daily' | 'weekly' | 'monthly';
 export type UpstreamMode = 'mock' | 'cli_creds' | 'apikey';
-export type Surface = 'web_chat' | 'api';
+export type Surface = 'web_chat' | 'api' | 'learning';
 export type MessageRole = 'user' | 'assistant';
 
 /** اصلاحیهٔ ۲ / Issue A — messages.status (TECH.md §3). */
@@ -133,6 +133,8 @@ export interface MeResponseWire {
    * regenerated and this is frozen; `parseMe` below defaults it to `[]`.
    */
   teams?: MeTeam[];
+  /** amendment-7 — chat-learning opt-out (defaults true server-side). */
+  learning_enabled?: boolean;
 }
 
 export interface MeResponse extends Omit<MeResponseWire, 'quota' | 'teams'> {
@@ -917,4 +919,89 @@ export interface ServiceGrant {
 export interface ServiceTestResult {
   ok: boolean;
   message: string;
+}
+
+// ---------- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ----------
+
+export type KnowledgeScope = 'service' | 'user_service' | 'user' | 'team';
+export type KnowledgeKind = 'rule' | 'knowledge';
+export type KnowledgeSource = 'manual' | 'learned';
+
+export interface KnowledgeEntry {
+  id: number;
+  scope: KnowledgeScope;
+  kind: KnowledgeKind;
+  source: KnowledgeSource;
+  service_id: number | null;
+  user_id: number | null;
+  team_id: number | null;
+  title: string;
+  content: string;
+  enabled: boolean;
+  sort_order: number;
+  learned_from_conversation_id: number | null;
+  created_by: number | null;
+  /** Authored by an admin about this user — read-only for the (non-admin) user. */
+  admin_locked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeEntryCreate {
+  kind: KnowledgeKind;
+  title: string;
+  content: string;
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+export interface KnowledgeEntryUpdate {
+  kind?: KnowledgeKind;
+  title?: string;
+  content?: string;
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+/** GET /api/knowledge/me/services — services the current user holds a grant on. */
+export interface MyService {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  kind: ServiceKind;
+  level: ServiceGrantLevel;
+  entry_count: number;
+}
+
+export interface LearningPref {
+  enabled: boolean;
+}
+
+export interface LearningSettings {
+  global_enabled: boolean;
+  model_key: string | null;
+  interval_minutes: number;
+  idle_minutes: number;
+  min_new_user_messages: number;
+  max_entries_per_user: number;
+  learned_entries: number;
+  users_opted_out: number;
+  last_run_at: string | null;
+  last_run_summary: string | null;
+}
+
+export interface LearningRunResult {
+  conversations: number;
+  entries_added: number;
+  entries_updated: number;
+  errors: number;
+}
+
+export interface KnowledgeStats {
+  total: number;
+  by_scope: Record<string, number>;
+  by_source: Record<string, number>;
+  conversations_total: number;
+  messages_total: number;
 }

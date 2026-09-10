@@ -112,6 +112,20 @@ class Settings(BaseSettings):
     chat_cost_nudge_credits: int = 2000
     gitlab_default_host: str = "git.ecobin.ir"
 
+    # --- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ---
+    # user+team rules/knowledge pack inlined into the system prompt while under
+    # this many chars; knowledge beyond it spills to <ws>/.ecocode/knowledge/*.md.
+    knowledge_inline_max_chars: int = 6000
+    # Learning from chats: a scheduler job digests idle conversations with new
+    # messages into per-user `learned` knowledge entries (users may opt out).
+    learning_enabled: bool = True
+    learning_interval_minutes: int = 15
+    learning_idle_minutes: int = 10          # conversation must be quiet this long first
+    learning_min_new_user_messages: int = 2   # …and have at least this many new user turns
+    learning_max_conversations_per_run: int = 6
+    learning_max_entries_per_user: int = 80   # cap on learned rows per user
+    learning_model_key: str = ""              # empty -> cheapest enabled model
+
     admin_username: str = "admin"
     admin_password: str = "changeme123"
     admin_email: str = ""

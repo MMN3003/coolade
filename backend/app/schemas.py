@@ -46,6 +46,7 @@ class MeResponse(BaseModel):
     quota: MeQuotaSummary | None
     max_thinking_level: str  # Issue D — caps the web chat thinking-level picker
     teams: list[MeTeamOut] = []  # اصلاحیهٔ ۴ / Issue H
+    learning_enabled: bool = True  # amendment-7 — chat-learning opt-out
 
 
 # ---------- Conversations ----------
@@ -557,3 +558,100 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+# ---------- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ----------
+KnowledgeScopeLiteral = Literal["service", "user_service", "user", "team"]
+KnowledgeKindLiteral = Literal["rule", "knowledge"]
+KnowledgeSourceLiteral = Literal["manual", "learned"]
+
+
+class KnowledgeEntryCreate(BaseModel):
+    kind: KnowledgeKindLiteral = "knowledge"
+    title: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=20_000)
+    enabled: bool = True
+    sort_order: int = 0
+
+
+class KnowledgeEntryUpdate(BaseModel):
+    kind: KnowledgeKindLiteral | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    content: str | None = Field(default=None, min_length=1, max_length=20_000)
+    enabled: bool | None = None
+    sort_order: int | None = None
+
+
+class KnowledgeEntryOut(BaseModel):
+    id: int
+    scope: KnowledgeScopeLiteral
+    kind: KnowledgeKindLiteral
+    source: KnowledgeSourceLiteral
+    service_id: int | None
+    user_id: int | None
+    team_id: int | None
+    title: str
+    content: str
+    enabled: bool
+    sort_order: int
+    learned_from_conversation_id: int | None = None
+    created_by: int | None
+    # UI hint: entries an admin authored are read-only for the (non-admin) user.
+    admin_locked: bool = False
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class MyServiceOut(BaseModel):
+    """GET /api/knowledge/me/services — services the current user holds a grant on."""
+
+    id: int
+    slug: str
+    name: str
+    description: str | None
+    kind: str
+    level: str
+    entry_count: int = 0
+
+
+class LearningPrefOut(BaseModel):
+    enabled: bool
+
+
+class LearningPrefSet(BaseModel):
+    enabled: bool
+
+
+class LearningSettingsOut(BaseModel):
+    """Admin view of the chat-learning job."""
+
+    global_enabled: bool
+    model_key: str | None
+    interval_minutes: int
+    idle_minutes: int
+    min_new_user_messages: int
+    max_entries_per_user: int
+    learned_entries: int
+    users_opted_out: int
+    last_run_at: datetime.datetime | None = None
+    last_run_summary: str | None = None
+
+
+class LearningSettingsSet(BaseModel):
+    global_enabled: bool | None = None
+    model_key: str | None = None  # "" or null = cheapest enabled model
+
+
+class LearningRunOut(BaseModel):
+    conversations: int
+    entries_added: int
+    entries_updated: int
+    errors: int
+
+
+class KnowledgeStatsOut(BaseModel):
+    total: int
+    by_scope: dict[str, int]
+    by_source: dict[str, int]
+    conversations_total: int
+    messages_total: int

@@ -182,6 +182,7 @@ def _build_command(
     resume_session_id: str | None,
     team_dirs: list[str] | None = None,
     mcp_config_path: str | None = None,
+    extra_system_prompt: str | None = None,
 ) -> list[str]:
     if settings.mock_cli:
         cmd = ["python3", "/app/bin/mock-claude"]
@@ -201,11 +202,16 @@ def _build_command(
     cmd += ["--permission-mode", "acceptEdits"]
     # Token economy: output tokens carry the highest ledger weight (15x), so a
     # short standing instruction trims prose without touching real reports.
-    cmd += [
-        "--append-system-prompt",
+    system_text = (
         "پاسخ‌ها را فشرده بده: بدون مقدمه، بدون تکرار سؤال، بدون جمع‌بندی تشریفاتی. "
-        "فقط وقتی صریحاً گزارش رسمی/مدیریتی یا متن بلند خواسته شده مفصل بنویس.",
-    ]
+        "فقط وقتی صریحاً گزارش رسمی/مدیریتی یا متن بلند خواسته شده مفصل بنویس."
+    )
+    # amendment-7 (knowledge layer): the per-turn pack of this user's + their teams'
+    # rules/knowledge (app/services/knowledge.py::compile_turn_context) rides in the
+    # same appended system prompt — one flag, one string.
+    if extra_system_prompt:
+        system_text += "\n\n" + extra_system_prompt
+    cmd += ["--append-system-prompt", system_text]
     # amendment-1 / DS6: granted organizational services ride in as MCP servers.
     # --strict-mcp-config pins the turn to exactly this generated file, so no
     # stray project/user config can add unaudited servers to a governed turn.
@@ -518,6 +524,10 @@ async def run_conversation_turn(
         mcp_config_path, service_allowed_tools = await sync_service_access(user_id, ws)
     except Exception:  # pragma: no cover - degrade gracefully, never kill a turn
         logger.exception("service sync failed for user %s", user_id)
+    # amendment-7 (knowledge layer): user + team rules/knowledge → appended system
+    # prompt (rules always; knowledge inline within budget, else spilled to
+    # <ws>/.ecocode/knowledge/*.md with an index). Failure degrades to "no pack".
+    knowledge_text = await _knowledge_pack(user_id, ws, member_teams)
     # Account 5h reset hint for the actionable upstream-429 message (product-owner
     # follow-up, 2026-08-22) — read once up front; the CLI turn itself has no DB.
     reset_hint: str | None = None
@@ -531,7 +541,9 @@ async def run_conversation_turn(
     async with _semaphore:
         resume = resume_session_id
         for attempt in (1, 2):
-            cmd = _build_command(prompt, upstream_model, resume, team_dirs, mcp_config_path)
+            cmd = _build_command(
+                prompt, upstream_model, resume, team_dirs, mcp_config_path, knowledge_text
+            )
             if service_allowed_tools:
                 # Permission rules prepared by the sync (mcp__<server> per granted
                 # service + Skill when any skill is synced); single comma-joined
@@ -595,6 +607,24 @@ async def run_conversation_turn(
             resume = None
 
 
+async def _knowledge_pack(
+    user_id: int, ws: Path, member_teams: list[tuple[int, str, str]]
+) -> str | None:
+    """amendment-7: compile this user's + teams' rules/knowledge for one turn and
+    materialise any spilled knowledge files under <ws>/.ecocode/knowledge/.
+    Never raises — a broken pack must not cost the user their turn."""
+    try:
+        from app.services import knowledge as knowledge_service
+
+        async with async_session_factory() as db:
+            ctx = await knowledge_service.compile_turn_context(db, user_id, member_teams)
+        await asyncio.to_thread(knowledge_service.write_context_files, ws, ctx.files)
+        return ctx.system_text or None
+    except Exception:  # pragma: no cover - degrade gracefully
+        logger.exception("knowledge pack failed for user %s", user_id)
+        return None
+
+
 async def run_oneshot_turn(
     *,
     user_id: int,
@@ -618,6 +648,14 @@ async def run_oneshot_turn(
     Anthropic wire formats the API client expects."""
     ws = workspace_dir(user_id)
     env = await _build_env(thinking_level)
+    # amendment-7: the user's (and their teams') rules/knowledge apply on this
+    # surface too — same person, same standing instructions.
+    try:
+        async with async_session_factory() as db:
+            member_teams = await member_team_rows(db, user_id)
+    except Exception:  # pragma: no cover
+        member_teams = []
+    knowledge_text = await _knowledge_pack(user_id, ws, member_teams)
     # Account 5h reset hint for the actionable upstream-429 message (parity with
     # run_conversation_turn) — read once up front; the CLI turn itself has no DB.
     reset_hint: str | None = None
@@ -629,7 +667,7 @@ async def run_oneshot_turn(
     except Exception:  # pragma: no cover - telemetry only, never block a turn
         reset_hint = None
     async with _semaphore:
-        cmd = _build_command(prompt, upstream_model, None, None)
+        cmd = _build_command(prompt, upstream_model, None, None, None, knowledge_text)
         async for ev in _run_process(
             cmd,
             cwd=ws,

@@ -8,7 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.config import get_settings
 from app.db import async_session_factory
 from app.services.quota import run_periodic_reset
-from app.services import reaper
+from app.services import learning, reaper
 
 logger = logging.getLogger("ecocode.scheduler")
 settings = get_settings()
@@ -32,11 +32,27 @@ async def _reaper_job() -> None:
         logger.exception("workspace reaper failed")
 
 
+async def _learning_job() -> None:
+    # amendment-7 — learn durable facts from idle conversations (docs/KNOWLEDGE.md)
+    try:
+        await learning.run_once()
+    except Exception:
+        logger.exception("chat learning pass failed")
+
+
 def start_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_job, "interval", minutes=5, id="quota_reset")
     scheduler.add_job(
         _reaper_job, "interval", minutes=settings.workspace_reaper_minutes, id="workspace_reaper"
+    )
+    scheduler.add_job(
+        _learning_job,
+        "interval",
+        minutes=max(1, settings.learning_interval_minutes),
+        id="chat_learning",
+        max_instances=1,
+        coalesce=True,
     )
     scheduler.start()
     return scheduler

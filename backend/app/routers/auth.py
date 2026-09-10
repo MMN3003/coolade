@@ -187,4 +187,5 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
             period_start=quota.period_start,
         ),
         teams=teams,
+        learning_enabled=bool(getattr(user, "learning_enabled", True)),
     )

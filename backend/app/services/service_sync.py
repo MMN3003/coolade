@@ -7,10 +7,20 @@ everything is PROJECT-scope there:
   * mcp      → <ws>/.ecocode/mcp.json with a fresh short-lived turn key
                 (org_services.mint_turn_key), passed to the CLI via --mcp-config.
 
+amendment-7 (knowledge layer, docs/KNOWLEDGE.md):
+  * every synced service skill gets the service's knowledge/rules (admin, scope
+    `service`) and THIS user's own notes for it (scope `user_service`) appended
+    to SKILL.md — so they load exactly when the service is used. A service with
+    tools but no published skill gets a minimal generated SKILL.md when it has
+    knowledge, so the knowledge is still discoverable.
+  * every user gets the `_me` MCP server (personal memory tools: remember /
+    forget / list) — the eco-memory skill talks to it instead of hand-editing
+    CLAUDE.md, so «یادت باشه» lands in the DB and shows up in «دانش من».
+
 A version marker (<ws>/.ecocode/services-state.json) makes the copy step a
-no-op when nothing changed. Revocation never depends on this file — the
-gateway re-checks the grant on every call (ب-۳); stale synced skills are
-removed on the next turn anyway.
+no-op when nothing changed (skill version AND knowledge fingerprint). Revocation
+never depends on this file — the gateway re-checks the grant on every call (ب-۳);
+stale synced skills are removed on the next turn anyway.
 """
 from __future__ import annotations
 
@@ -24,6 +34,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.db import async_session_factory
 from app.models import Service, ServiceGrant, User, UserRole
+from app.services import knowledge as knowledge_service
 from app.services import org_services
 
 settings = get_settings()
@@ -40,7 +51,9 @@ BUILDER_VERSION = 1  # bump when the shipped asset changes
 MEMORY_SLUG = "_memory"
 MEMORY_SKILL_DIRNAME = "eco-memory"
 MEMORY_ASSET = _ASSETS / MEMORY_SKILL_DIRNAME
-MEMORY_VERSION = 1
+MEMORY_VERSION = 2  # v2: DB-backed via the `_me` MCP tools (amendment-7)
+# amendment-7: reserved per-user MCP server (personal memory tools), all users.
+ME_SLUG = "_me"
 
 
 async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[str]]:
@@ -58,21 +71,39 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
                 .order_by(Service.slug)
             )
         ).scalars().all()
-        granted = [(s.slug, s.skill_version) for s in rows]
+        # slug -> (version, knowledge-fingerprint, addendum markdown, minimal SKILL.md)
+        granted: dict[str, tuple[int, str, str, str]] = {}
+        for s in rows:
+            fp = await knowledge_service.service_fingerprint(db, user_id, s.id)
+            addendum = ""
+            if fp:  # cheap: only load rows when there could be any
+                s_rows = await knowledge_service.service_entries(db, s.id)
+                u_rows = await knowledge_service.user_service_entries(db, user_id, s.id)
+                addendum = knowledge_service.render_service_addendum(
+                    s.name, s.description, s_rows, u_rows
+                )
+            granted[s.slug] = (
+                s.skill_version,
+                fp,
+                addendum,
+                knowledge_service.minimal_skill_md(s.slug, s.name, s.description),
+            )
     is_admin = user is not None and user.role == UserRole.admin
 
     def _sync_files() -> tuple[str | None, list[str]]:
         eco_dir = ws / ".ecocode"
         skills_root = ws / ".claude" / "skills"
         state_path = eco_dir / "services-state.json"
-        # Skills to have on disk (slug -> version). _memory is skill-only for
+        # Skills to have on disk (slug -> state marker). _memory is skill-only for
         # everyone; _admin is skill+server for admins; services may be
-        # server-only (version 0 = no published skill yet).
-        desired_skills: dict[str, int] = {slug: ver for slug, ver in granted}
-        desired_skills[MEMORY_SLUG] = MEMORY_VERSION
-        mcp_slugs = [slug for slug, _ in granted]
+        # server-only (version 0 = no published skill and no knowledge yet).
+        desired_skills: dict[str, str] = {
+            slug: f"{ver}:{fp}" for slug, (ver, fp, _add, _min) in granted.items()
+        }
+        desired_skills[MEMORY_SLUG] = str(MEMORY_VERSION)
+        mcp_slugs = list(granted) + [ME_SLUG]
         if is_admin:
-            desired_skills[BUILDER_SLUG] = BUILDER_VERSION
+            desired_skills[BUILDER_SLUG] = str(BUILDER_VERSION)
             mcp_slugs.append(BUILDER_SLUG)
 
         try:
@@ -91,24 +122,37 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
                     shutil.rmtree(child, ignore_errors=True)
 
         # Copy changed/new skill packages.
-        for slug, ver in desired_skills.items():
-            if prev.get(slug) == ver:
+        for slug, marker in desired_skills.items():
+            if str(prev.get(slug)) == marker:
                 continue
             if slug == BUILDER_SLUG:
                 src, dest = BUILDER_ASSET, skills_root / BUILDER_SKILL_DIRNAME
+                addendum, minimal = "", ""
             elif slug == MEMORY_SLUG:
                 src, dest = MEMORY_ASSET, skills_root / MEMORY_SKILL_DIRNAME
+                addendum, minimal = "", ""
             else:
-                if ver <= 0:
-                    continue  # service has tools but no published skill yet
-                src = Path(settings.services_root) / slug / str(ver)
+                ver, _fp, addendum, minimal = granted[slug]
                 dest = skills_root / f"{SKILL_PREFIX}{slug}"
-            if not src.is_dir():
-                continue
+                src = Path(settings.services_root) / slug / str(ver) if ver > 0 else None
+                if (src is None or not src.is_dir()) and not addendum:
+                    # tools but neither a published skill nor any knowledge yet
+                    shutil.rmtree(dest, ignore_errors=True)
+                    continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             if dest.exists():
                 shutil.rmtree(dest, ignore_errors=True)
-            shutil.copytree(src, dest)
+            if src is not None and src.is_dir():
+                shutil.copytree(src, dest)
+            else:
+                dest.mkdir(parents=True, exist_ok=True)
+                (dest / "SKILL.md").write_text(minimal, encoding="utf-8")
+            if slug not in (BUILDER_SLUG, MEMORY_SLUG):
+                skill_md = dest / "SKILL.md"
+                base = skill_md.read_text(encoding="utf-8") if skill_md.exists() else minimal
+                skill_md.write_text(
+                    knowledge_service.apply_addendum(base, addendum), encoding="utf-8"
+                )
 
         eco_dir.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(desired_skills, ensure_ascii=False), encoding="utf-8")
@@ -116,10 +160,6 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
         allowed = [f"mcp__{s}" for s in sorted(mcp_slugs)]
         if desired_skills:
             allowed.append("Skill")
-
-        if not mcp_slugs:
-            (eco_dir / "mcp.json").unlink(missing_ok=True)
-            return None, allowed
 
         key = org_services.mint_turn_key(user_id)
         servers = {

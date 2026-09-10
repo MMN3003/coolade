@@ -15,6 +15,7 @@ from app.db import async_session_factory
 from app.errors import AppError, app_error_handler, unhandled_error_handler, validation_error_handler
 from app.internal import router as internal_router
 from app.routers import (
+    admin_knowledge,
     admin_models,
     admin_plans,
     admin_services,
@@ -26,6 +27,7 @@ from app.routers import (
     conversations,
     health,
     keys,
+    knowledge,
     mcp_gateway,
     relay,
     teams,
@@ -118,6 +120,7 @@ app.include_router(conversations.router)
 app.include_router(workspace.router)
 app.include_router(workspaces_v2.router)
 app.include_router(teams.router)
+app.include_router(knowledge.router)
 app.include_router(keys.router)
 app.include_router(usage.router)
 # v2 — the old CLI-wrapping web service (/v1 passthrough for Cline) is removed
@@ -126,6 +129,7 @@ app.include_router(relay.router)
 app.include_router(mcp_gateway.router)
 app.include_router(admin_users.router)
 app.include_router(admin_services.router)
+app.include_router(admin_knowledge.router)
 app.include_router(admin_teams.router)
 app.include_router(admin_models.router)
 app.include_router(admin_plans.router)

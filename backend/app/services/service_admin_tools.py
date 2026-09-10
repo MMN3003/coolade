@@ -19,8 +19,20 @@ from typing import Any
 from sqlalchemy import func, select
 
 from app.config import get_settings
-from app.models import GrantLevel, Service, ServiceGrant, ServiceKind, User
+from app.models import (
+    GrantLevel,
+    KnowledgeEntry,
+    KnowledgeKind,
+    KnowledgeScope,
+    KnowledgeSource,
+    Service,
+    ServiceGrant,
+    ServiceKind,
+    Team,
+    User,
+)
 from app.security import decrypt_secret, encrypt_secret
+from app.services import knowledge as knowledge_service
 from app.services import org_services
 from app.services.audit import record_audit
 
@@ -118,6 +130,70 @@ ADMIN_TOOLS: list[dict[str, Any]] = [
         "name": "list_users",
         "description": "فهرست کاربران فعال (برای انتخاب گرنت).",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    # ---- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ----
+    {
+        "name": "list_knowledge",
+        "description": (
+            "فهرست قوانین/دانش یک محدوده: scope=service (slug)، user_service (slug+username)، "
+            "user (username)، team (team_slug)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["service", "user_service", "user", "team"]},
+                "slug": {"type": "string", "description": "slug سرویس (برای service/user_service)"},
+                "username": {"type": "string", "description": "کاربر (برای user/user_service)"},
+                "team_slug": {"type": "string", "description": "slug تیم (برای team)"},
+            },
+            "required": ["scope"],
+        },
+    },
+    {
+        "name": "add_knowledge",
+        "description": (
+            "افزودن یک قانون (kind=rule؛ الزامی، همیشه رعایت می‌شود) یا دانش (kind=knowledge؛ "
+            "واقعیت/داده/تعریف) به یک محدوده. scope=service → برای همهٔ کاربران آن سرویس؛ "
+            "user_service → فقط این کاربر هنگام استفاده از این سرویس؛ user → همیشه برای این کاربر؛ "
+            "team → همهٔ اعضای تیم. متن کوتاه، مستقل و بدون اعتبارنامه."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "scope": {"type": "string", "enum": ["service", "user_service", "user", "team"]},
+                "kind": {"type": "string", "enum": ["rule", "knowledge"]},
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "slug": {"type": "string"},
+                "username": {"type": "string"},
+                "team_slug": {"type": "string"},
+            },
+            "required": ["scope", "kind", "title", "content"],
+        },
+    },
+    {
+        "name": "update_knowledge",
+        "description": "ویرایش یک مورد دانش/قانون با id (عنوان/متن/نوع/فعال).",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "id": {"type": "integer"},
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "kind": {"type": "string", "enum": ["rule", "knowledge"]},
+                "enabled": {"type": "boolean"},
+            },
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "delete_knowledge",
+        "description": "حذف یک مورد دانش/قانون با id. فقط با تأیید صریح ادمین.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"id": {"type": "integer"}},
+            "required": ["id"],
+        },
     },
 ]
 
@@ -299,6 +375,109 @@ async def call_admin_tool(db, admin: User, tool: str, args: dict[str, Any]) -> d
         await record_audit(
             db, actor_id=admin.id, action=action, target_id=target.id,
             detail={"service_id": svc.id, "slug": svc.slug, "user": username, "via": "builder"},
+        )
+        await db.commit()
+        return {"ok": True}
+
+    if tool in ("list_knowledge", "add_knowledge"):
+        scope = KnowledgeScope(str(args.get("scope") or ""))
+        service_id = user_id = team_id = None
+        if scope in (KnowledgeScope.service, KnowledgeScope.user_service):
+            svc = await _get_service(db, str(args.get("slug") or ""))
+            if svc is None:
+                raise guard("سرویسی با این slug نیست.")
+            service_id = svc.id
+        if scope in (KnowledgeScope.user, KnowledgeScope.user_service):
+            username = str(args.get("username") or "").strip()
+            target = (
+                await db.execute(select(User).where(User.username == username))
+            ).scalar_one_or_none()
+            if target is None:
+                raise guard(f"کاربری با نام {username} نیست (از list_users استفاده کن).")
+            user_id = target.id
+        if scope == KnowledgeScope.team:
+            tslug = str(args.get("team_slug") or "").strip()
+            team = (await db.execute(select(Team).where(Team.slug == tslug))).scalar_one_or_none()
+            if team is None:
+                raise guard(f"تیمی با slug «{tslug}» نیست.")
+            team_id = team.id
+
+        if tool == "list_knowledge":
+            rows = (
+                await db.execute(
+                    select(KnowledgeEntry)
+                    .where(
+                        KnowledgeEntry.scope == scope,
+                        KnowledgeEntry.service_id.is_(service_id) if service_id is None
+                        else KnowledgeEntry.service_id == service_id,
+                        KnowledgeEntry.user_id.is_(user_id) if user_id is None
+                        else KnowledgeEntry.user_id == user_id,
+                        KnowledgeEntry.team_id.is_(team_id) if team_id is None
+                        else KnowledgeEntry.team_id == team_id,
+                    )
+                    .order_by(KnowledgeEntry.sort_order, KnowledgeEntry.id)
+                )
+            ).scalars().all()
+            return {
+                "entries": [
+                    {
+                        "id": e.id, "kind": e.kind.value, "source": e.source.value,
+                        "enabled": e.enabled, "title": e.title, "content": e.content,
+                    }
+                    for e in rows
+                ],
+                "row_count": len(rows),
+            }
+
+        try:
+            title = knowledge_service.clean_title(str(args.get("title") or ""))
+            content = knowledge_service.clean_content(str(args.get("content") or ""))
+        except ValueError as exc:
+            raise guard(str(exc))
+        entry = KnowledgeEntry(
+            scope=scope,
+            kind=KnowledgeKind(str(args.get("kind") or "knowledge")),
+            source=KnowledgeSource.manual,
+            service_id=service_id, user_id=user_id, team_id=team_id,
+            title=title, content=content, created_by=admin.id,
+        )
+        db.add(entry)
+        await db.flush()
+        await record_audit(
+            db, actor_id=admin.id, action="knowledge.create", target_id=user_id,
+            detail={"id": entry.id, "scope": scope.value, "service_id": service_id,
+                    "team_id": team_id, "via": "builder"},
+        )
+        await db.commit()
+        return {"ok": True, "id": entry.id}
+
+    if tool in ("update_knowledge", "delete_knowledge"):
+        entry = await db.get(KnowledgeEntry, int(args.get("id") or 0))
+        if entry is None:
+            raise guard("موردی با این id نیست.")
+        if tool == "delete_knowledge":
+            await record_audit(
+                db, actor_id=admin.id, action="knowledge.delete", target_id=entry.user_id,
+                detail={"id": entry.id, "scope": entry.scope.value, "via": "builder"},
+            )
+            await db.delete(entry)
+            await db.commit()
+            return {"ok": True}
+        try:
+            if args.get("title"):
+                entry.title = knowledge_service.clean_title(str(args["title"]))
+            if args.get("content"):
+                entry.content = knowledge_service.clean_content(str(args["content"]))
+        except ValueError as exc:
+            raise guard(str(exc))
+        if args.get("kind"):
+            entry.kind = KnowledgeKind(str(args["kind"]))
+        if args.get("enabled") is not None:
+            entry.enabled = bool(args["enabled"])
+        entry.updated_at = func.now()
+        await record_audit(
+            db, actor_id=admin.id, action="knowledge.update", target_id=entry.user_id,
+            detail={"id": entry.id, "scope": entry.scope.value, "via": "builder"},
         )
         await db.commit()
         return {"ok": True}

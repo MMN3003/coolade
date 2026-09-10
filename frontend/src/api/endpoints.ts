@@ -70,6 +70,14 @@ import type {
   UsageMeResponseWire,
   WorkspaceFile,
   WorkspaceFileContent,
+  KnowledgeEntry,
+  KnowledgeEntryCreate,
+  KnowledgeEntryUpdate,
+  MyService,
+  LearningPref,
+  LearningSettings,
+  LearningRunResult,
+  KnowledgeStats,
 } from './types';
 
 // ---------- decimal-string parsing at the API boundary ----------
@@ -502,4 +510,92 @@ export const adminServicesApi = {
     api.put<{ ok: boolean }>(`/api/admin/services/${id}/grants/${userId}`, { level }),
   revokeGrant: (id: number, userId: number) =>
     api.delete<Record<string, unknown>>(`/api/admin/services/${id}/grants/${userId}`),
+};
+
+// ---------- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ----------
+export interface KnowledgeEntriesApi {
+  list: () => Promise<KnowledgeEntry[]>;
+  create: (body: KnowledgeEntryCreate) => Promise<KnowledgeEntry>;
+  update: (id: number, body: KnowledgeEntryUpdate) => Promise<KnowledgeEntry>;
+  remove: (id: number) => Promise<unknown>;
+}
+
+const userEntryOps = {
+  update: (id: number, body: KnowledgeEntryUpdate) =>
+    api.patch<KnowledgeEntry>(`/api/knowledge/entries/${id}`, body),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/knowledge/entries/${id}`),
+};
+
+const adminEntryOps = {
+  update: (id: number, body: KnowledgeEntryUpdate) =>
+    api.patch<KnowledgeEntry>(`/api/admin/knowledge/entries/${id}`, body),
+  remove: (id: number) => api.delete<Record<string, unknown>>(`/api/admin/knowledge/entries/${id}`),
+};
+
+export const knowledgeApi = {
+  /** «دانش من» — own rules/knowledge (scope user), incl. learned entries. */
+  me: (): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>('/api/knowledge/me'),
+    create: (body) => api.post<KnowledgeEntry>('/api/knowledge/me', body),
+    ...userEntryOps,
+  }),
+  myServices: () => api.get<MyService[]>('/api/knowledge/me/services'),
+  /** My own notes/rules for one granted service (scope user_service). */
+  myService: (slug: string): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>(`/api/knowledge/me/services/${encodeURIComponent(slug)}`),
+    create: (body) =>
+      api.post<KnowledgeEntry>(`/api/knowledge/me/services/${encodeURIComponent(slug)}`, body),
+    ...userEntryOps,
+  }),
+  /** Team shared rules/knowledge (members). */
+  team: (teamId: number): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>(`/api/knowledge/teams/${teamId}`),
+    create: (body) => api.post<KnowledgeEntry>(`/api/knowledge/teams/${teamId}`, body),
+    ...userEntryOps,
+  }),
+  learning: {
+    get: () => api.get<LearningPref>('/api/knowledge/me/learning'),
+    set: (enabled: boolean) => api.put<LearningPref>('/api/knowledge/me/learning', { enabled }),
+  },
+};
+
+export const adminKnowledgeApi = {
+  service: (serviceId: number): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>(`/api/admin/knowledge/services/${serviceId}`),
+    create: (body) => api.post<KnowledgeEntry>(`/api/admin/knowledge/services/${serviceId}`, body),
+    ...adminEntryOps,
+  }),
+  userService: (serviceId: number, userId: number): KnowledgeEntriesApi => ({
+    list: () =>
+      api.get<KnowledgeEntry[]>(`/api/admin/knowledge/services/${serviceId}/users/${userId}`),
+    create: (body) =>
+      api.post<KnowledgeEntry>(`/api/admin/knowledge/services/${serviceId}/users/${userId}`, body),
+    ...adminEntryOps,
+  }),
+  user: (userId: number): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>(`/api/admin/knowledge/users/${userId}`),
+    create: (body) => api.post<KnowledgeEntry>(`/api/admin/knowledge/users/${userId}`, body),
+    ...adminEntryOps,
+  }),
+  team: (teamId: number): KnowledgeEntriesApi => ({
+    list: () => api.get<KnowledgeEntry[]>(`/api/admin/knowledge/teams/${teamId}`),
+    create: (body) => api.post<KnowledgeEntry>(`/api/admin/knowledge/teams/${teamId}`, body),
+    ...adminEntryOps,
+  }),
+  stats: () => api.get<KnowledgeStats>('/api/admin/knowledge/stats'),
+  learning: {
+    get: () => api.get<LearningSettings>('/api/admin/knowledge/learning'),
+    set: (body: { global_enabled?: boolean; model_key?: string | null }) =>
+      api.put<LearningSettings>('/api/admin/knowledge/learning', body),
+    run: () => api.post<LearningRunResult>('/api/admin/knowledge/learning/run'),
+  },
+  exportConversationsUrl: (params?: { since?: string; until?: string; user_id?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.since) q.set('since', params.since);
+    if (params?.until) q.set('until', params.until);
+    if (params?.user_id) q.set('user_id', String(params.user_id));
+    const qs = q.toString();
+    return `/api/admin/knowledge/export/conversations.jsonl${qs ? `?${qs}` : ''}`;
+  },
+  exportEntriesUrl: () => '/api/admin/knowledge/export/entries.jsonl',
 };

@@ -219,6 +219,10 @@ async def mcp_service(slug: str, request: Request):
             # Reserved management endpoint for the service-builder assistant
             # (SV2, 2026-09-02): only admin users, tools from service_admin_tools.
             return await _handle_admin(db, request, user_id)
+        if slug == "_me":
+            # amendment-7: reserved per-user personal-memory server (every user;
+            # tools act only on the caller's own knowledge rows).
+            return await _handle_me(db, request, user_id)
 
         service = (
             await db.execute(select(Service).where(Service.slug == slug))
@@ -265,11 +269,40 @@ async def mcp_service(slug: str, request: Request):
 
 
 async def _handle_admin(db, request: Request, user_id: int):
-    from app.models import User, UserRole
+    from app.models import UserRole
     from app.services import service_admin_tools
 
+    return await _handle_reserved(
+        db, request, user_id,
+        server_name="ecocode-service-builder",
+        tools=service_admin_tools.ADMIN_TOOLS,
+        call=service_admin_tools.call_admin_tool,
+        require_role=UserRole.admin,
+    )
+
+
+async def _handle_me(db, request: Request, user_id: int):
+    from app.services import me_tools
+
+    return await _handle_reserved(
+        db, request, user_id,
+        server_name="ecocode-me",
+        tools=me_tools.ME_TOOLS,
+        call=me_tools.call_me_tool,
+        require_role=None,
+    )
+
+
+async def _handle_reserved(db, request: Request, user_id: int, *, server_name, tools, call, require_role):
+    """Shared JSON-RPC loop for the reserved `_admin` / `_me` servers: caller
+    must be an active user (and hold `require_role` when set); tool calls are
+    rate-limited like service calls and never leak stack traces."""
+    from app.models import User
+
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if user is None or user.role != UserRole.admin or not user.is_active:
+    if user is None or not user.is_active:
+        return JSONResponse({"error": "unknown user"}, status_code=403)
+    if require_role is not None and user.role != require_role:
         return JSONResponse({"error": "admin only"}, status_code=403)
 
     try:
@@ -289,13 +322,13 @@ async def _handle_admin(db, request: Request, user_id: int):
                 {
                     "protocolVersion": proto,
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "ecocode-service-builder", "version": "1.0"},
+                    "serverInfo": {"name": server_name, "version": "1.0"},
                 },
             )
         if method == "ping":
             return _rpc_result(msg_id, {})
         if method == "tools/list":
-            return _rpc_result(msg_id, {"tools": service_admin_tools.ADMIN_TOOLS})
+            return _rpc_result(msg_id, {"tools": tools})
         if method == "tools/call":
             params = msg.get("params") or {}
             tool = str(params.get("name", ""))
@@ -305,15 +338,16 @@ async def _handle_admin(db, request: Request, user_id: int):
                     msg_id, _tool_text({"error": "سقف فراخوانی در دقیقه؛ کمی بعد."}, is_error=True)
                 )
             try:
-                result = await service_admin_tools.call_admin_tool(db, user, tool, args)
+                result = await call(db, user, tool, args)
                 return _rpc_result(msg_id, _tool_text(result))
             except org_services.SqlGuardError as exc:
+                await db.rollback()
                 return _rpc_result(msg_id, _tool_text({"error": str(exc)}, is_error=True))
             except Exception as exc:
                 import logging
 
                 logging.getLogger("ecocode.mcp_gateway").exception(
-                    "admin tool %s failed for user %s", tool, user_id
+                    "%s tool %s failed for user %s", server_name, tool, user_id
                 )
                 await db.rollback()
                 return _rpc_result(
