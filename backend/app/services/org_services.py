@@ -190,6 +190,12 @@ def clean_read_sql(sql: str) -> str:
         raise SqlGuardError("فقط SELECT مجاز است (سطح دسترسی: read).")
     if _FORBIDDEN_WORDS.search(cleaned):
         raise SqlGuardError("کوئری شامل عبارت نوشتنی است؛ این سرویس فقط‌خواندنی است.")
+    # SELECT ... INTO <table> is a WRITE (it materialises a new table). INSERT INTO
+    # is already caught above, so any remaining bare INTO keyword can only be a
+    # SELECT-INTO — reject it. This closes the one write vector that survives on
+    # SQL Server, where the session has no server-side read-only switch.
+    if re.search(r"\binto\b", cleaned, re.IGNORECASE):
+        raise SqlGuardError("عبارت SELECT ... INTO مجاز نیست؛ این سرویس فقط‌خواندنی است.")
     return cleaned
 
 
@@ -211,6 +217,10 @@ def service_row_limit(service: "Service") -> int:
 
 def _is_oracle_dsn(dsn: str) -> bool:
     return dsn.strip().lower().startswith(("oracle://", "oracle+thin://"))
+
+
+def _is_mssql_dsn(dsn: str) -> bool:
+    return dsn.strip().lower().startswith(("mssql://", "sqlserver://"))
 
 
 # ------------------------------------------------------------ oracle driver
@@ -309,6 +319,123 @@ async def ora_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[st
         cols, records = await _ora_fetch(conn, wrapped)
     finally:
         await conn.close()
+    truncated = len(records) > limit
+    records = records[:limit]
+    rows = [{c: _jsonable(v) for c, v in zip(cols, rec)} for rec in records]
+    out: dict[str, Any] = {"rows": rows, "row_count": len(rows), "sql_executed": cleaned}
+    if truncated:
+        out["truncated"] = True
+        out["note"] = f"نتیجه بیش از {limit} ردیف بود و بریده شد؛ کوئری را محدودتر کن."
+    return out
+
+
+# ------------------------------------------------------------ sql-server driver
+# pymssql (FreeTDS) in a worker thread — SQL Server has no async DB-API and no
+# session-level read-only switch (unlike PG's default_transaction_read_only or
+# Oracle's SET TRANSACTION READ ONLY). So the write-safety here rests on layer 1
+# (clean_read_sql: single SELECT/WITH, forbidden-word guard) PLUS layer 2 (the
+# read DSN MUST be a SELECT-only SQL login the admin created). Row cap uses
+# SET ROWCOUNT so it also bounds queries that carry a top-level ORDER BY (which
+# SQL Server forbids inside a derived-table wrapper). DSN admins provide:
+#   mssql://user:pass@host:1433/DATABASE   (host may be host\instance or host:port)
+def _mssql_params(dsn: str) -> dict[str, Any]:
+    import urllib.parse
+
+    u = urllib.parse.urlsplit(
+        dsn.replace("sqlserver://", "mssql://", 1)
+    )
+    database = (u.path or "").lstrip("/")
+    if not (u.hostname and u.username and database):
+        raise SqlGuardError(
+            "DSN اس‌کیوال‌سرور باید به شکل mssql://user:pass@host:port/DATABASE باشد."
+        )
+    params: dict[str, Any] = {
+        "server": u.hostname,
+        "user": urllib.parse.unquote(u.username),
+        "password": urllib.parse.unquote(u.password or ""),
+        "database": database,
+        "login_timeout": 5,
+        "timeout": settings.service_sql_timeout_s,  # per-query timeout (s)
+        "charset": "UTF-8",
+    }
+    if u.port:
+        params["port"] = u.port
+    return params
+
+
+def _mssql_fetch(params: dict[str, Any], statements: list[str]) -> tuple[list[str], list[tuple]]:
+    """Run the LAST statement as the result-bearing query; any earlier ones
+    (e.g. SET ROWCOUNT) are session setup. Blocking — call via asyncio.to_thread."""
+    import pymssql
+
+    conn = pymssql.connect(**params)
+    try:
+        conn.autocommit(True)  # no open write txn ever
+        cur = conn.cursor()
+        for stmt in statements[:-1]:
+            cur.execute(stmt)
+        cur.execute(statements[-1])
+        rows = cur.fetchall()
+        cols = [d[0] for d in cur.description or []]
+        return cols, rows
+    finally:
+        conn.close()
+
+
+async def mssql_list_tables(dsn: str) -> dict[str, Any]:
+    import asyncio
+
+    params = _mssql_params(dsn)
+    cols, rows = await asyncio.to_thread(
+        _mssql_fetch,
+        params,
+        [
+            "SELECT TABLE_SCHEMA, TABLE_NAME FROM INFORMATION_SCHEMA.TABLES "
+            "WHERE TABLE_TYPE='BASE TABLE' ORDER BY TABLE_SCHEMA, TABLE_NAME"
+        ],
+    )
+    tables = [t if sch == "dbo" else f"{sch}.{t}" for sch, t in rows]
+    return {"tables": tables, "row_count": len(tables)}
+
+
+async def mssql_describe_table(dsn: str, table: str) -> dict[str, Any]:
+    import asyncio
+
+    schema, _, name = table.rpartition(".")
+    schema = schema or "dbo"
+    params = _mssql_params(dsn)
+    _, rows = await asyncio.to_thread(
+        _mssql_fetch,
+        params,
+        [
+            "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE FROM INFORMATION_SCHEMA.COLUMNS "
+            f"WHERE TABLE_SCHEMA=N'{schema.replace(chr(39), chr(39) * 2)}' "
+            f"AND TABLE_NAME=N'{name.replace(chr(39), chr(39) * 2)}' ORDER BY ORDINAL_POSITION"
+        ],
+    )
+    if not rows:
+        return {"error": f"جدول {table} یافت نشد یا این اکانت به آن دسترسی ندارد.", "row_count": 0}
+    return {
+        "columns": [
+            {"name": c, "type": ty, "nullable": nu == "YES"} for c, ty, nu in rows
+        ],
+        "row_count": len(rows),
+    }
+
+
+async def mssql_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[str, Any]:
+    import asyncio
+
+    cleaned = clean_read_sql(sql)
+    limit = limit or settings.service_sql_row_limit
+    params = _mssql_params(dsn)
+    # SET ROWCOUNT bounds the row count server-side without a derived-table
+    # wrapper, so a top-level ORDER BY in `cleaned` still runs. +1 detects trunc.
+    cols, records = await asyncio.to_thread(
+        _mssql_fetch,
+        params,
+        [f"SET ROWCOUNT {limit + 1}", cleaned],
+    )
     truncated = len(records) > limit
     records = records[:limit]
     rows = [{c: _jsonable(v) for c, v in zip(cols, rec)} for rec in records]
@@ -491,16 +618,18 @@ async def call_tool(service: Service, tool: str, arguments: dict[str, Any]) -> d
     if not conn:
         raise SqlGuardError("اعتبارنامهٔ سرویس قابل بازیابی نیست؛ به ادمین اطلاع دهید.")
     if service.kind == ServiceKind.sql:
-        oracle = _is_oracle_dsn(conn)
+        if _is_oracle_dsn(conn):
+            _lt, _dt, _rq = ora_list_tables, ora_describe_table, ora_run_query
+        elif _is_mssql_dsn(conn):
+            _lt, _dt, _rq = mssql_list_tables, mssql_describe_table, mssql_run_query
+        else:
+            _lt, _dt, _rq = sql_list_tables, sql_describe_table, sql_run_query
         if tool == "list_tables":
-            return await (ora_list_tables(conn) if oracle else sql_list_tables(conn))
+            return await _lt(conn)
         if tool == "describe_table":
-            table = str(arguments.get("table", ""))
-            return await (ora_describe_table(conn, table) if oracle else sql_describe_table(conn, table))
+            return await _dt(conn, str(arguments.get("table", "")))
         if tool == "run_query":
-            q = str(arguments.get("sql", ""))
-            lim = service_row_limit(service)
-            return await (ora_run_query(conn, q, lim) if oracle else sql_run_query(conn, q, lim))
+            return await _rq(conn, str(arguments.get("sql", "")), service_row_limit(service))
     elif service.kind == ServiceKind.files:
         if tool == "list_dir":
             return await files_list_dir(conn, str(arguments.get("path", "")))
@@ -525,6 +654,11 @@ async def test_connection(service_kind: ServiceKind, conn: str) -> tuple[bool, s
                 finally:
                     await c.close()
                 return True, "اتصال اوراکل برقرار شد (SELECT 1 FROM dual موفق)."
+            if _is_mssql_dsn(conn):
+                import asyncio
+
+                await asyncio.to_thread(_mssql_fetch, _mssql_params(conn), ["SELECT 1"])
+                return True, "اتصال اس‌کیوال‌سرور برقرار شد (SELECT 1 موفق)."
             c = await _pg_connect(conn)
             try:
                 await c.fetchval("SELECT 1")
