@@ -37,17 +37,34 @@ export interface OpenStreamParams {
 }
 
 const KNOWN_EVENTS = new Set(['start', 'delta', 'tool', 'done', 'error', 'idle']);
+const TERMINAL_EVENTS = new Set(['done', 'error', 'idle']);
 
-function parseSseBlock(block: string): { event?: string; data: string } | null {
+function parseSseBlock(block: string): { event?: string; data: string; comment: boolean } | null {
   const lines = block.split('\n');
   let event: string | undefined;
+  let comment = false;
   const dataLines: string[] = [];
   for (const line of lines) {
     if (line.startsWith('event:')) event = line.slice(6).trim();
     else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+    else if (line.startsWith(':')) comment = true; // SSE comment — the backend's keepalive ping
   }
-  if (dataLines.length === 0 && !event) return null;
-  return { event, data: dataLines.join('\n') || '{}' };
+  if (dataLines.length === 0 && !event) return comment ? { data: '{}', comment } : null;
+  return { event, data: dataLines.join('\n') || '{}', comment: false };
+}
+
+/**
+ * Thrown by `openConversationStream` when the socket closes before a terminal
+ * event (`done`/`error`/`idle`) arrived — proxy idle timeout, mobile radio
+ * hand-off, tab backgrounded by the OS… The turn itself is still running
+ * server-side, so the right reaction is to reattach (replay is idempotent),
+ * not to show an error. `useConversationStream` does that with backoff.
+ */
+export class StreamInterruptedError extends Error {
+  constructor() {
+    super('stream closed before a terminal event');
+    this.name = 'StreamInterruptedError';
+  }
 }
 
 /**
@@ -86,12 +103,14 @@ export async function* openConversationStream(
   const reader = res.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
+  let terminal = false;
 
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      // CRLF-tolerant: some proxies re-emit lines with \r\n.
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
 
       let sepIndex: number;
       // events are separated by a blank line ("\n\n")
@@ -100,13 +119,19 @@ export async function* openConversationStream(
         buffer = buffer.slice(sepIndex + 2);
         const parsed = parseSseBlock(rawBlock);
         if (!parsed) continue;
+        if (parsed.comment) {
+          yield { type: 'ping' };
+          continue;
+        }
         try {
           const payload = JSON.parse(parsed.data) as Record<string, unknown>;
           // event name comes from the `event:` line; tolerate payloads that
           // also carry a `type` field.
           const type = parsed.event ?? (payload.type as string | undefined);
           if (!type || !KNOWN_EVENTS.has(type)) continue;
+          if (TERMINAL_EVENTS.has(type)) terminal = true;
           yield { ...(payload as object), type } as ChatStreamEvent;
+          if (terminal) return;
         } catch {
           // ignore malformed chunk
         }
@@ -115,4 +140,5 @@ export async function* openConversationStream(
   } finally {
     reader.releaseLock();
   }
+  if (!terminal) throw new StreamInterruptedError();
 }

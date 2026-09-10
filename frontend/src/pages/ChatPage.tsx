@@ -99,6 +99,7 @@ export default function ChatPage() {
   const stream = useConversationStream();
   const justCreatedIdRef = useRef<number | null>(null);
   const autoAttachedForRef = useRef<number | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Finalize a turn (done/error/idle): refresh canonical messages + sidebar +
   // quota, then drop the local live overlay. `stream.reset()` only tears down
@@ -117,12 +118,16 @@ export default function ChatPage() {
 
   const streamCallbacks: ConversationStreamCallbacks = {
     onDone: () => finishTurn(true),
-    onError: (message) => {
+    onError: (message, code) => {
       // The failure is persisted server-side (status='failed' + error_reason)
       // and will render as a retry-able bubble once we refetch; surface the
       // raw message too so a pre-persistence failure (e.g. the /stream
       // endpoint itself not existing yet on an un-upgraded backend) isn't silent.
       setSendError(message);
+      // A local transport failure (reader gave up reconnecting) is NOT a
+      // finished turn — let the auto-attach effect below try again after the
+      // refetch if the server still reports `generating`.
+      if (code === 'stream_error') autoAttachedForRef.current = null;
       return finishTurn(false);
     },
     onIdle: () => finishTurn(false),
@@ -340,7 +345,11 @@ export default function ChatPage() {
   );
 
   const disclaimer = (
-    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+    <Typography
+      variant="caption"
+      color="text.disabled"
+      sx={{ display: 'block', textAlign: 'center', mt: 0.5, fontSize: '0.68rem', lineHeight: 1.4 }}
+    >
       {t('chat.disclaimer')}
     </Typography>
   );
@@ -460,7 +469,18 @@ export default function ChatPage() {
              The composer stays mounted while a conversation loads/errors (as
              before) so the streaming state machine and input never flicker. */
           <>
-            <Box sx={{ flexGrow: 1, overflowY: 'auto', minHeight: 0 }}>
+            <Box
+              ref={scrollContainerRef}
+              sx={{
+                flexGrow: 1,
+                overflowY: 'auto',
+                minHeight: 0,
+                // Mobile: keep the list's own scroll from chaining into the page
+                // (rubber-banding / pull-to-refresh while reading a reply).
+                overscrollBehavior: 'contain',
+                WebkitOverflowScrolling: 'touch',
+              }}
+            >
               {loadingConversation ? (
                 <LoadingState />
               ) : erroredConversation ? (
@@ -472,9 +492,11 @@ export default function ChatPage() {
                     assistantMessageId: stream.state.assistantMessageId,
                     text: stream.state.text,
                     toolStatus: toolStatusLabel(stream.state.tool),
+                    reconnecting: stream.state.reconnecting,
                   }}
                   onRetry={handleRetry}
                   retryPendingId={retryPendingId}
+                  scrollContainerRef={scrollContainerRef}
                 />
               )}
             </Box>

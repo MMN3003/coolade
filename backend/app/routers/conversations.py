@@ -56,6 +56,14 @@ def _sse(event: str, data: dict) -> bytes:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n".encode()
 
 
+# SSE keepalive cadence for GET …/stream (see stream_conversation). 15s is
+# comfortably under the ~30-60s idle cut-off of mobile carriers / CDNs.
+_SSE_PING_SECONDS = 15
+# An SSE comment line: every compliant parser ignores it, and the browser
+# client treats it as a liveness signal (frontend/src/api/sse.ts).
+_SSE_PING = b": ping\n\n"
+
+
 async def _get_owned_conversation(db: AsyncSession, user: User, conversation_id: int) -> Conversation:
     conv = await db.get(Conversation, conversation_id)
     if not conv or conv.user_id != user.id or conv.deleted_at is not None:
@@ -446,17 +454,38 @@ async def stream_conversation(
         idx = 0
         while True:
             async with state.condition:
+                # Keepalive: while the CLI is thinking / running a tool no event
+                # arrives for a long time. Mobile carrier NAT, CDNs and nginx all
+                # drop an idle connection well before that, so wake up every
+                # _SSE_PING_SECONDS and emit an SSE comment (ignored by parsers,
+                # but keeps bytes flowing).
+                ping = False
                 while idx >= len(state.events) and not state.done:
-                    await state.condition.wait()
+                    try:
+                        await asyncio.wait_for(state.condition.wait(), timeout=_SSE_PING_SECONDS)
+                    except asyncio.TimeoutError:
+                        ping = True
+                        break
                 batch = state.events[idx:]
                 idx = len(state.events)
                 finished = state.done and idx >= len(state.events)
+            if ping and not batch:
+                yield _SSE_PING
+                continue
             for ev in batch:
                 yield _sse(ev["event"], ev["data"])
             if finished:
                 break
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.post(

@@ -25,7 +25,7 @@ export default function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', height: '100vh', '@supports (height: 100dvh)': { height: '100dvh' }, overflow: 'hidden' }}>
       {/* Desktop permanent sidebar (right side in RTL — first flex child). */}
       <Box
         sx={{
@@ -63,6 +63,7 @@ export default function AppShell() {
           display: 'flex',
           flexDirection: 'column',
           height: '100vh',
+          '@supports (height: 100dvh)': { height: '100dvh' },
           overflow: 'hidden',
           position: 'relative',
         }}

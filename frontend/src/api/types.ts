@@ -232,7 +232,9 @@ export type ChatStreamEvent =
   | { type: 'tool'; name: string; summary: string }
   | { type: 'done'; credits_used: DecimalString; files_changed: string[]; thinking_level?: ThinkingLevel }
   | { type: 'error'; message: string; code?: string }
-  | { type: 'idle' };
+  | { type: 'idle' }
+  // liveness signal (SSE comment line `: ping` on the wire) — never rendered.
+  | { type: 'ping' };
 
 // ---------- workspace files (F4.6) ----------
 
