@@ -4,6 +4,13 @@ import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
+import Dialog from '@mui/material/Dialog';
+import DialogActions from '@mui/material/DialogActions';
+import DialogContent from '@mui/material/DialogContent';
+import DialogTitle from '@mui/material/DialogTitle';
+import List from '@mui/material/List';
+import ListItemButton from '@mui/material/ListItemButton';
+import ListItemText from '@mui/material/ListItemText';
 import FormControlLabel from '@mui/material/FormControlLabel';
 import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
@@ -17,7 +24,7 @@ import PlayArrowIcon from '@mui/icons-material/PlayArrowOutlined';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
 import { useTranslation } from 'react-i18next';
 import { adminKnowledgeApi, adminModelsApi, adminServicesApi, adminTeamsApi, adminUsersApi } from '@/api/endpoints';
-import type { LearningRunResult } from '@/api/types';
+import type { AdminConversation, LearningRunResult } from '@/api/types';
 import { formatPersianDateTime } from '@/utils/date';
 import { getErrorMessage } from '@/utils/errors';
 import KnowledgeEntriesEditor from '@/components/knowledge/KnowledgeEntriesEditor';
@@ -85,7 +92,7 @@ function LearningTab() {
   }
 
   const setMutation = useMutation({
-    mutationFn: (body: { global_enabled?: boolean; model_key?: string | null }) =>
+    mutationFn: (body: { global_enabled?: boolean; model_key?: string | null; team_enabled?: boolean }) =>
       adminKnowledgeApi.learning.set(body),
     onSuccess: refresh,
   });
@@ -188,12 +195,18 @@ function LearningTab() {
               {t('knowledge.admin.optedOut', { count: s.users_opted_out })}
             </Typography>
             {runResult && (
-              <Alert severity={runResult.errors ? 'warning' : 'success'}>
+              <Alert severity={runResult.errors || runResult.team_errors ? 'warning' : 'success'}>
                 {t('knowledge.admin.runResult', {
                   conversations: runResult.conversations,
                   added: runResult.entries_added,
                   updated: runResult.entries_updated,
                   errors: runResult.errors,
+                })}{' '}
+                {t('knowledge.admin.teamRunResult', {
+                  teams: runResult.teams,
+                  added: runResult.team_entries_added,
+                  updated: runResult.team_entries_updated,
+                  errors: runResult.team_errors,
                 })}
               </Alert>
             )}
@@ -203,6 +216,37 @@ function LearningTab() {
           </Stack>
         )}
       </Paper>
+
+      {s && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Typography fontWeight={600}>{t('knowledge.admin.teamLearningTitle')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+            {t('knowledge.admin.teamLearningHint', {
+              interval: s.team_interval_hours,
+              min: s.team_min_new_messages,
+              max: s.team_max_entries,
+            })}
+          </Typography>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }} sx={{ mt: 1 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={s.team_enabled}
+                  disabled={setMutation.isPending}
+                  onChange={(e) => setMutation.mutate({ team_enabled: e.target.checked })}
+                />
+              }
+              label={t('knowledge.admin.teamEnabled')}
+            />
+            <Typography variant="caption" color="text.secondary">
+              {t('knowledge.admin.statLearned')}: {s.team_learned_entries.toLocaleString('fa-IR')} ·{' '}
+              {t('knowledge.admin.lastRun')}:{' '}
+              {s.team_last_run_at ? formatPersianDateTime(s.team_last_run_at) : t('knowledge.admin.never')}
+              {s.team_last_run_summary ? ` — ${s.team_last_run_summary}` : ''}
+            </Typography>
+          </Stack>
+        </Paper>
+      )}
 
       <Paper variant="outlined" sx={{ p: 2 }}>
         <Typography fontWeight={600}>{t('knowledge.admin.datasetTitle')}</Typography>
@@ -246,28 +290,122 @@ function LearningTab() {
 
 function UsersTab() {
   const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const usersQuery = useQuery({ queryKey: ['admin', 'users'], queryFn: adminUsersApi.list });
   const [userId, setUserId] = useState<number | ''>('');
+  const [showChats, setShowChats] = useState(false);
+  const [openConv, setOpenConv] = useState<AdminConversation | null>(null);
   const api = useMemo(() => (userId !== '' ? adminKnowledgeApi.user(Number(userId)) : null), [userId]);
+  const selected = (usersQuery.data ?? []).find((u) => u.id === userId);
+  const learningMutation = useMutation({
+    mutationFn: (enabled: boolean) => adminKnowledgeApi.setUserLearning(Number(userId), enabled),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      queryClient.invalidateQueries({ queryKey: ['admin', 'knowledge'] });
+    },
+  });
+  const convsQuery = useQuery({
+    queryKey: ['admin', 'knowledge', 'users', userId, 'conversations'],
+    queryFn: () => adminKnowledgeApi.userConversations(Number(userId)),
+    enabled: userId !== '' && showChats,
+  });
+  const convQuery = useQuery({
+    queryKey: ['admin', 'knowledge', 'conversation', openConv?.id],
+    queryFn: () => adminKnowledgeApi.conversation(openConv!.id),
+    enabled: !!openConv,
+  });
   return (
     <Stack spacing={2}>
-      <TextField
-        select
-        size="small"
-        label={t('knowledge.admin.pickUser')}
-        value={userId}
-        onChange={(e) => setUserId(Number(e.target.value))}
-        sx={{ maxWidth: 420 }}
-      >
-        {(usersQuery.data ?? []).map((u) => (
-          <MenuItem key={u.id} value={u.id}>
-            {u.display_name || u.username} ({u.username})
-          </MenuItem>
-        ))}
-      </TextField>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems={{ sm: 'center' }}>
+        <TextField
+          select
+          size="small"
+          label={t('knowledge.admin.pickUser')}
+          value={userId}
+          onChange={(e) => {
+            setUserId(Number(e.target.value));
+            setShowChats(false);
+          }}
+          sx={{ minWidth: 320 }}
+        >
+          {(usersQuery.data ?? []).map((u) => (
+            <MenuItem key={u.id} value={u.id}>
+              {u.display_name || u.username} ({u.username})
+            </MenuItem>
+          ))}
+        </TextField>
+        {selected && (
+          <FormControlLabel
+            control={
+              <Switch
+                checked={selected.learning_enabled ?? true}
+                disabled={learningMutation.isPending}
+                onChange={(e) => learningMutation.mutate(e.target.checked)}
+              />
+            }
+            label={t('knowledge.admin.userLearning')}
+          />
+        )}
+      </Stack>
+      {learningMutation.isError && <Alert severity="error">{getErrorMessage(learningMutation.error)}</Alert>}
       {api && (
         <KnowledgeEntriesEditor api={api} queryKey={['admin', 'knowledge', 'users', userId]} hint={t('knowledge.admin.userHint')} />
       )}
+      {userId !== '' && (
+        <Paper variant="outlined" sx={{ p: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+            <Box>
+              <Typography fontWeight={600}>{t('knowledge.admin.conversationsTitle')}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {t('knowledge.admin.conversationsHint')}
+              </Typography>
+            </Box>
+            <Button size="small" variant="outlined" onClick={() => setShowChats((v) => !v)}>
+              {showChats ? t('knowledge.admin.hideConversations') : t('knowledge.admin.showConversations')}
+            </Button>
+          </Stack>
+          {showChats && convsQuery.isLoading && <LoadingState />}
+          {showChats && convsQuery.isSuccess && convsQuery.data.length === 0 && (
+            <Typography color="text.secondary" sx={{ mt: 1 }}>
+              {t('knowledge.admin.noConversations')}
+            </Typography>
+          )}
+          {showChats && !!convsQuery.data?.length && (
+            <List dense sx={{ mt: 1 }}>
+              {convsQuery.data.map((c) => (
+                <ListItemButton key={c.id} onClick={() => setOpenConv(c)}>
+                  <ListItemText
+                    primary={c.title}
+                    secondary={`${formatPersianDateTime(c.updated_at)} · ${t('knowledge.admin.messages', { count: c.message_count })}${c.model_key ? ` · ${c.model_key}` : ''}`}
+                  />
+                </ListItemButton>
+              ))}
+            </List>
+          )}
+        </Paper>
+      )}
+      <Dialog open={!!openConv} onClose={() => setOpenConv(null)} maxWidth="md" fullWidth>
+        <DialogTitle>{openConv?.title}</DialogTitle>
+        <DialogContent dividers>
+          {convQuery.isLoading && <LoadingState />}
+          {convQuery.isError && <Alert severity="error">{getErrorMessage(convQuery.error)}</Alert>}
+          <Stack spacing={1.5}>
+            {(convQuery.data?.messages ?? []).map((m) => (
+              <Box key={m.id} sx={{ p: 1.25, borderRadius: 1, bgcolor: m.role === 'user' ? 'action.hover' : 'transparent', border: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="caption" color="text.secondary">
+                  {m.role === 'user' ? t('knowledge.admin.roleUser') : t('knowledge.admin.roleAssistant')} · {formatPersianDateTime(m.created_at)}
+                </Typography>
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {m.content}
+                </Typography>
+              </Box>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenConv(null)}>{t('common.close')}</Button>
+        </DialogActions>
+      </Dialog>
     </Stack>
   );
 }

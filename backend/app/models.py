@@ -133,6 +133,9 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(150), nullable=False)
     slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
     description: Mapped[str | None] = mapped_column(Text)
+    # Knowledge layer (0011): team-learning cursor — highest message id (across all
+    # members' conversations) already digested into this team's learned knowledge.
+    learned_through_message_id: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

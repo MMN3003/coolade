@@ -9,6 +9,8 @@
   /api/admin/knowledge/learning        GET/PUT settings; POST …/run = manual pass
   /api/admin/knowledge/export/conversations.jsonl   chat transcripts (dataset)
   /api/admin/knowledge/export/entries.jsonl         all knowledge entries
+  /api/admin/knowledge/users/{user_id}/conversations           a user's chats (audited)
+  /api/admin/knowledge/conversations/{conversation_id}         one chat's messages (audited)
 
 Exports are the seed for the product owner's «سیستم سازمانی آموزش‌دیده» plan:
 plain JSONL, one conversation per line in chat format. Every export is written
@@ -42,6 +44,9 @@ from app.models import (
     User,
 )
 from app.schemas import (
+    AdminConversationDetailOut,
+    AdminConversationMessageOut,
+    AdminConversationOut,
     KnowledgeEntryCreate,
     KnowledgeEntryOut,
     KnowledgeEntryUpdate,
@@ -50,6 +55,7 @@ from app.schemas import (
     LearningSettingsOut,
     LearningSettingsSet,
     OkResponse,
+    UserLearningSet,
 )
 from app.services import knowledge as knowledge_service
 from app.services import learning
@@ -203,6 +209,26 @@ async def add_user_entry(
     return await _create(db, request, admin, payload, KnowledgeScope.user, user_id=user_id)
 
 
+@router.put("/users/{user_id}/learning", response_model=OkResponse)
+async def set_user_learning(
+    user_id: int,
+    payload: UserLearningSet,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> OkResponse:
+    """Admin toggles chat-learning for one user (knowledge is admin-managed;
+    there is no self-service toggle)."""
+    u = await _user(db, user_id)
+    u.learning_enabled = payload.enabled
+    await record_audit(
+        db, actor_id=admin.id, action="knowledge.learning_pref", target_id=user_id,
+        detail={"enabled": payload.enabled}, ip_address=client_ip(request),
+    )
+    await db.commit()
+    return OkResponse()
+
+
 @router.get("/teams/{team_id}", response_model=list[KnowledgeEntryOut])
 async def team_entries(
     team_id: int, _: User = Depends(require_admin), db: AsyncSession = Depends(get_db)
@@ -278,6 +304,89 @@ async def delete_entry(
     return OkResponse()
 
 
+# ---------------------------------------------------------------- admin reads of chats
+# Product decision (2026-09-10): an admin may read a user's conversations when
+# needed (to understand/curate what the assistant learned). Every read is
+# audit-logged with the target user and conversation id.
+@router.get("/users/{user_id}/conversations", response_model=list[AdminConversationOut])
+async def user_conversations(
+    user_id: int,
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AdminConversationOut]:
+    await _user(db, user_id)
+    msg_count = (
+        select(func.count(Message.id))
+        .where(Message.conversation_id == Conversation.id, Message.status == MessageStatus.complete)
+        .scalar_subquery()
+    )
+    rows = (
+        await db.execute(
+            select(Conversation, Model.model_key, msg_count)
+            .join(Model, Model.id == Conversation.model_id, isouter=True)
+            .where(Conversation.user_id == user_id, Conversation.deleted_at.is_(None))
+            .order_by(Conversation.updated_at.desc())
+            .limit(limit)
+        )
+    ).all()
+    await record_audit(
+        db, actor_id=admin.id, action="knowledge.read_conversations", target_id=user_id,
+        detail={"rows": len(rows)}, ip_address=client_ip(request),
+    )
+    await db.commit()
+    return [
+        AdminConversationOut(
+            id=c.id, title=c.title, model_key=mk, message_count=int(n or 0),
+            created_at=c.created_at, updated_at=c.updated_at,
+        )
+        for c, mk, n in rows
+    ]
+
+
+@router.get("/conversations/{conversation_id}", response_model=AdminConversationDetailOut)
+async def conversation_detail(
+    conversation_id: int,
+    request: Request,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> AdminConversationDetailOut:
+    row = (
+        await db.execute(
+            select(Conversation, User.username, Model.model_key)
+            .join(User, User.id == Conversation.user_id)
+            .join(Model, Model.id == Conversation.model_id, isouter=True)
+            .where(Conversation.id == conversation_id, Conversation.deleted_at.is_(None))
+        )
+    ).first()
+    if row is None:
+        raise not_found("گفتگو یافت نشد.")
+    conv, username, model_key = row
+    msgs = (
+        await db.execute(
+            select(Message).where(Message.conversation_id == conv.id).order_by(Message.id)
+        )
+    ).scalars().all()
+    await record_audit(
+        db, actor_id=admin.id, action="knowledge.read_conversation", target_id=conv.user_id,
+        detail={"conversation_id": conv.id, "messages": len(msgs)}, ip_address=client_ip(request),
+    )
+    await db.commit()
+    return AdminConversationDetailOut(
+        id=conv.id, title=conv.title, model_key=model_key, message_count=len(msgs),
+        created_at=conv.created_at, updated_at=conv.updated_at,
+        user_id=conv.user_id, username=username,
+        messages=[
+            AdminConversationMessageOut(
+                id=m.id, role=m.role, content=m.content,
+                status=getattr(m.status, "value", str(m.status)), created_at=m.created_at,
+            )
+            for m in msgs
+        ],
+    )
+
+
 # ---------------------------------------------------------------- stats / learning
 @router.get("/stats", response_model=KnowledgeStatsOut)
 async def stats(_: User = Depends(require_admin), db: AsyncSession = Depends(get_db)) -> KnowledgeStatsOut:
@@ -322,8 +431,24 @@ async def _learning_out(db: AsyncSession) -> LearningSettingsOut:
         await db.execute(select(func.count(User.id)).where(User.learning_enabled.is_(False)))
     ).scalar_one()
     when, summary = await learning.last_run(db)
+    t_when, t_summary = await learning.team_last_run(db)
+    team_learned = (
+        await db.execute(
+            select(func.count(KnowledgeEntry.id)).where(
+                KnowledgeEntry.source == KnowledgeSource.learned,
+                KnowledgeEntry.scope == KnowledgeScope.team,
+            )
+        )
+    ).scalar_one()
     model = await learning.resolve_model(db)
     return LearningSettingsOut(
+        team_enabled=await learning.is_team_enabled(db),
+        team_interval_hours=settings.team_learning_interval_hours,
+        team_min_new_messages=settings.team_learning_min_new_messages,
+        team_max_entries=settings.team_learning_max_entries,
+        team_learned_entries=team_learned,
+        team_last_run_at=t_when,
+        team_last_run_summary=t_summary,
         global_enabled=await learning.is_enabled(db),
         model_key=model.model_key if model else None,
         interval_minutes=settings.learning_interval_minutes,
@@ -353,6 +478,8 @@ async def set_learning_settings(
 ) -> LearningSettingsOut:
     if payload.global_enabled is not None:
         await learning.set_enabled(db, payload.global_enabled, admin.id)
+    if payload.team_enabled is not None:
+        await learning.set_team_enabled(db, payload.team_enabled, admin.id)
     if payload.model_key is not None:
         key = payload.model_key.strip()
         if key:
@@ -380,7 +507,14 @@ async def run_learning_now(
     )
     await db.commit()
     result = await learning.run_once(force=True, by=admin.id)
-    return LearningRunOut(**result)
+    team = await learning.run_team_once(force=True, by=admin.id)
+    return LearningRunOut(
+        **result,
+        teams=team["teams"],
+        team_entries_added=team["entries_added"],
+        team_entries_updated=team["entries_updated"],
+        team_errors=team["errors"],
+    )
 
 
 # ---------------------------------------------------------------- exports

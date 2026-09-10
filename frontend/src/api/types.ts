@@ -133,8 +133,6 @@ export interface MeResponseWire {
    * regenerated and this is frozen; `parseMe` below defaults it to `[]`.
    */
   teams?: MeTeam[];
-  /** amendment-7 — chat-learning opt-out (defaults true server-side). */
-  learning_enabled?: boolean;
 }
 
 export interface MeResponse extends Omit<MeResponseWire, 'quota' | 'teams'> {
@@ -467,6 +465,8 @@ export interface AdminUser {
   /** User Plans / Tiers — the plan this user inherits from (null = no plan). */
   plan_id: number | null;
   plan_name: string | null;
+  /** amendment-7 — chat-learning on/off for this user (admin-managed). */
+  learning_enabled?: boolean;
 }
 
 /** Wire quota of UserDetailOut (QuotaOut) — note: NO used_credits here. */
@@ -963,21 +963,6 @@ export interface KnowledgeEntryUpdate {
   sort_order?: number;
 }
 
-/** GET /api/knowledge/me/services — services the current user holds a grant on. */
-export interface MyService {
-  id: number;
-  slug: string;
-  name: string;
-  description: string | null;
-  kind: ServiceKind;
-  level: ServiceGrantLevel;
-  entry_count: number;
-}
-
-export interface LearningPref {
-  enabled: boolean;
-}
-
 export interface LearningSettings {
   global_enabled: boolean;
   model_key: string | null;
@@ -989,6 +974,13 @@ export interface LearningSettings {
   users_opted_out: number;
   last_run_at: string | null;
   last_run_summary: string | null;
+  team_enabled: boolean;
+  team_interval_hours: number;
+  team_min_new_messages: number;
+  team_max_entries: number;
+  team_learned_entries: number;
+  team_last_run_at: string | null;
+  team_last_run_summary: string | null;
 }
 
 export interface LearningRunResult {
@@ -996,6 +988,10 @@ export interface LearningRunResult {
   entries_added: number;
   entries_updated: number;
   errors: number;
+  teams: number;
+  team_entries_added: number;
+  team_entries_updated: number;
+  team_errors: number;
 }
 
 export interface KnowledgeStats {
@@ -1004,4 +1000,28 @@ export interface KnowledgeStats {
   by_source: Record<string, number>;
   conversations_total: number;
   messages_total: number;
+}
+
+/** Admin read of a user's chats — GET /api/admin/knowledge/users/{id}/conversations (audited). */
+export interface AdminConversation {
+  id: number;
+  title: string;
+  model_key: string | null;
+  message_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminConversationMessage {
+  id: number;
+  role: string;
+  content: string;
+  status: string;
+  created_at: string;
+}
+
+export interface AdminConversationDetail extends AdminConversation {
+  user_id: number;
+  username: string;
+  messages: AdminConversationMessage[];
 }

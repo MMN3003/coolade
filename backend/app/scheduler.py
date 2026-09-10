@@ -40,6 +40,13 @@ async def _learning_job() -> None:
         logger.exception("chat learning pass failed")
 
 
+async def _team_learning_job() -> None:
+    try:
+        await learning.run_team_once()
+    except Exception:
+        logger.exception("team learning pass failed")
+
+
 def start_scheduler() -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler()
     scheduler.add_job(_job, "interval", minutes=5, id="quota_reset")
@@ -51,6 +58,14 @@ def start_scheduler() -> AsyncIOScheduler:
         "interval",
         minutes=max(1, settings.learning_interval_minutes),
         id="chat_learning",
+        max_instances=1,
+        coalesce=True,
+    )
+    scheduler.add_job(
+        _team_learning_job,
+        "interval",
+        hours=max(1, settings.team_learning_interval_hours),
+        id="team_learning",
         max_instances=1,
         coalesce=True,
     )

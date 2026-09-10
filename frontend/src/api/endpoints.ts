@@ -73,8 +73,8 @@ import type {
   KnowledgeEntry,
   KnowledgeEntryCreate,
   KnowledgeEntryUpdate,
-  MyService,
-  LearningPref,
+  AdminConversation,
+  AdminConversationDetail,
   LearningSettings,
   LearningRunResult,
   KnowledgeStats,
@@ -533,30 +533,12 @@ const adminEntryOps = {
 };
 
 export const knowledgeApi = {
-  /** «دانش من» — own rules/knowledge (scope user), incl. learned entries. */
+  /** «حافظه و قوانین من» — own rules/knowledge (scope user), incl. learned entries. */
   me: (): KnowledgeEntriesApi => ({
     list: () => api.get<KnowledgeEntry[]>('/api/knowledge/me'),
     create: (body) => api.post<KnowledgeEntry>('/api/knowledge/me', body),
     ...userEntryOps,
   }),
-  myServices: () => api.get<MyService[]>('/api/knowledge/me/services'),
-  /** My own notes/rules for one granted service (scope user_service). */
-  myService: (slug: string): KnowledgeEntriesApi => ({
-    list: () => api.get<KnowledgeEntry[]>(`/api/knowledge/me/services/${encodeURIComponent(slug)}`),
-    create: (body) =>
-      api.post<KnowledgeEntry>(`/api/knowledge/me/services/${encodeURIComponent(slug)}`, body),
-    ...userEntryOps,
-  }),
-  /** Team shared rules/knowledge (members). */
-  team: (teamId: number): KnowledgeEntriesApi => ({
-    list: () => api.get<KnowledgeEntry[]>(`/api/knowledge/teams/${teamId}`),
-    create: (body) => api.post<KnowledgeEntry>(`/api/knowledge/teams/${teamId}`, body),
-    ...userEntryOps,
-  }),
-  learning: {
-    get: () => api.get<LearningPref>('/api/knowledge/me/learning'),
-    set: (enabled: boolean) => api.put<LearningPref>('/api/knowledge/me/learning', { enabled }),
-  },
 };
 
 export const adminKnowledgeApi = {
@@ -583,9 +565,16 @@ export const adminKnowledgeApi = {
     ...adminEntryOps,
   }),
   stats: () => api.get<KnowledgeStats>('/api/admin/knowledge/stats'),
+  setUserLearning: (userId: number, enabled: boolean) =>
+    api.put<{ ok: boolean }>(`/api/admin/knowledge/users/${userId}/learning`, { enabled }),
+  /** Audited admin reads of a user's chats (docs/KNOWLEDGE.md §6). */
+  userConversations: (userId: number) =>
+    api.get<AdminConversation[]>(`/api/admin/knowledge/users/${userId}/conversations`),
+  conversation: (conversationId: number) =>
+    api.get<AdminConversationDetail>(`/api/admin/knowledge/conversations/${conversationId}`),
   learning: {
     get: () => api.get<LearningSettings>('/api/admin/knowledge/learning'),
-    set: (body: { global_enabled?: boolean; model_key?: string | null }) =>
+    set: (body: { global_enabled?: boolean; model_key?: string | null; team_enabled?: boolean }) =>
       api.put<LearningSettings>('/api/admin/knowledge/learning', body),
     run: () => api.post<LearningRunResult>('/api/admin/knowledge/learning/run'),
   },

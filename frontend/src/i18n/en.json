@@ -82,7 +82,7 @@
     "quotaBannerWarning": "You have used {{percent}}% of your current period quota.",
     "quotaBannerExceeded": "Your current period quota has run out.",
     "services": "Services",
-    "knowledge": "My knowledge",
+    "knowledge": "My memory & rules",
     "adminKnowledge": "Knowledge & learning"
   },
   "chat": {
@@ -222,21 +222,8 @@
     }
   },
   "knowledge": {
-    "title": "My knowledge",
-    "intro": "Everything here is available to the assistant in all your chats: a rule is always followed; knowledge is used when relevant. In chat you can also say “remember …”.",
-    "tabMe": "My memory & rules",
-    "tabServices": "My services",
-    "tabTeams": "Teams",
-    "learningTitle": "Learn from my chats",
-    "learningHint": "The system extracts durable facts (role, preferences, corrections) from your chats and stores them here tagged “learned”; you can delete any of them.",
-    "learningOn": "On",
-    "learningOff": "Off",
-    "noServices": "You have no service grants.",
-    "noTeams": "You are not a member of any team.",
-    "pickService": "Pick a service",
-    "pickTeam": "Pick a team",
-    "serviceNotesHint": "Your personal notes and rules for this service — applied only when using it.",
-    "teamHint": "Shared team knowledge and rules — applies to every member; any member can edit.",
+    "title": "My memory & rules",
+    "intro": "Everything here is available to the assistant in all your chats: a rule is always followed; knowledge is used when relevant. In chat you can also say “remember …”. Entries tagged “learned” were extracted from your chats and can be deleted; entries “set by admin” are read-only.",
     "editor": {
       "add": "New entry",
       "edit": "Edit entry",
@@ -293,7 +280,20 @@
       "pickService": "Pick a service",
       "userHint": "Rules/knowledge about this person — applied in all their chats. Admin entries are read-only for the user; “learned” ones were extracted from their chats.",
       "teamHint": "Shared team rules/knowledge — for every member.",
-      "serviceHint": "Service rules/knowledge — for every granted user, when using the service."
+      "serviceHint": "Service rules/knowledge — for every granted user, when using the service.",
+      "userLearning": "Learn from this user's chats",
+      "teamLearningTitle": "Team learning",
+      "teamLearningHint": "Every {{interval}} h, each team's new member messages (at least {{min}} user messages) are digested once; shared team knowledge (terminology, processes, reporting rules) is added to the team tagged learned so every member benefits. Personal preferences are not extracted. Cap per team: {{max}}.",
+      "teamEnabled": "Team learning enabled",
+      "teamRunResult": "Teams: {{teams}} processed; {{added}} added, {{updated}} updated, {{errors}} errors.",
+      "conversationsTitle": "This user's conversations",
+      "conversationsHint": "Reading users' chats is for reviewing/curating learned knowledge only; every read is audit-logged.",
+      "showConversations": "Show conversations",
+      "hideConversations": "Hide conversations",
+      "noConversations": "No conversations.",
+      "messages": "{{count}} messages",
+      "roleUser": "user",
+      "roleAssistant": "assistant"
     }
   }
 }

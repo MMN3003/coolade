@@ -56,6 +56,7 @@ def _user_out(user: User, plan_name: str | None) -> UserOut:
         created_at=user.created_at,
         plan_id=user.plan_id,
         plan_name=plan_name,
+        learning_enabled=bool(getattr(user, "learning_enabled", True)),
     )
 
 

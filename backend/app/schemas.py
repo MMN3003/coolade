@@ -234,6 +234,7 @@ class UserOut(ORMModel):
     created_at: datetime.datetime
     plan_id: int | None = None
     plan_name: str | None = None
+    learning_enabled: bool = True  # amendment-7 — admin-managed chat-learning switch
 
 
 class QuotaOut(BaseModel):
@@ -635,18 +636,35 @@ class LearningSettingsOut(BaseModel):
     users_opted_out: int
     last_run_at: datetime.datetime | None = None
     last_run_summary: str | None = None
+    # team learning (docs/KNOWLEDGE.md §3b)
+    team_enabled: bool = True
+    team_interval_hours: int = 6
+    team_min_new_messages: int = 8
+    team_max_entries: int = 80
+    team_learned_entries: int = 0
+    team_last_run_at: datetime.datetime | None = None
+    team_last_run_summary: str | None = None
 
 
 class LearningSettingsSet(BaseModel):
     global_enabled: bool | None = None
     model_key: str | None = None  # "" or null = cheapest enabled model
+    team_enabled: bool | None = None
 
 
 class LearningRunOut(BaseModel):
-    conversations: int
-    entries_added: int
-    entries_updated: int
-    errors: int
+    conversations: int = 0
+    entries_added: int = 0
+    entries_updated: int = 0
+    errors: int = 0
+    teams: int = 0
+    team_entries_added: int = 0
+    team_entries_updated: int = 0
+    team_errors: int = 0
+
+
+class UserLearningSet(BaseModel):
+    enabled: bool
 
 
 class KnowledgeStatsOut(BaseModel):
@@ -655,3 +673,28 @@ class KnowledgeStatsOut(BaseModel):
     by_source: dict[str, int]
     conversations_total: int
     messages_total: int
+
+
+class AdminConversationOut(BaseModel):
+    """Admin read of a user's conversations (docs/KNOWLEDGE.md §6 — audited)."""
+
+    id: int
+    title: str
+    model_key: str | None
+    message_count: int
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
+class AdminConversationMessageOut(BaseModel):
+    id: int
+    role: str
+    content: str
+    status: str
+    created_at: datetime.datetime
+
+
+class AdminConversationDetailOut(AdminConversationOut):
+    user_id: int
+    username: str
+    messages: list[AdminConversationMessageOut] = []

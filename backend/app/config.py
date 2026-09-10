@@ -125,6 +125,13 @@ class Settings(BaseSettings):
     learning_max_conversations_per_run: int = 6
     learning_max_entries_per_user: int = 80   # cap on learned rows per user
     learning_model_key: str = ""              # empty -> cheapest enabled model
+    # Team learning: every N hours, members' new chat messages are digested into
+    # the TEAM's shared knowledge (scope team, source learned) — terminology,
+    # processes, standing rules — never personal preferences.
+    team_learning_enabled: bool = True
+    team_learning_interval_hours: int = 6
+    team_learning_min_new_messages: int = 8    # new user messages across the team
+    team_learning_max_entries: int = 80        # cap on learned rows per team
 
     admin_username: str = "admin"
     admin_password: str = "changeme123"
