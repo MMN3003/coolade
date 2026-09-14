@@ -72,6 +72,7 @@
     "adminUsers": "Users",
     "adminPolicies": "Policies & Quota",
     "adminUsage": "Org Usage",
+    "adminTurns": "Usage per message",
     "adminModels": "Models & Weights",
     "plans": "Plans",
     "adminSettings": "Claude Connection",
@@ -218,6 +219,38 @@
     "pickUser": "Pick a user"
   },
   "admin": {
+    "turns": {
+      "title": "Usage per message",
+      "notice": "One row per answer turn: real tokens used, credits charged to the user, model and thinking level. Metadata only; message content is never shown.",
+      "user": "User",
+      "allUsers": "All users",
+      "surface": "Surface",
+      "allSurfaces": "All surfaces",
+      "surfaces": { "web_chat": "Web chat", "relay": "CLI (relay)", "passthrough": "Direct API", "mcp": "MCP" },
+      "since": "Since",
+      "time": "Time",
+      "ref": "Conversation / message",
+      "msg": "msg",
+      "model": "Model",
+      "thinking": "Thinking",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "cacheTokens": "Cache tokens",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "creditsInput": "Input credits",
+      "creditsOutput": "Output credits",
+      "creditsCharged": "Credits charged",
+      "driftHint": "Model weights changed after this turn; at current weights it would be {{now}}. The main figure is what the user was actually charged.",
+      "rowsPerPage": "Rows per page",
+      "of": "of"
+    },
+    "userUsage": {
+      "title": "User usage report",
+      "perMessage": "Per-message detail",
+      "back": "Back to users",
+      "notice": "Usage metadata only (tokens, credits, model, key, time); chat content is never shown."
+    },
     "users": {
       "setPassword": "Set password",
       "setPasswordTitle": "Set a new password for {{name}}"

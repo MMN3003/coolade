@@ -676,6 +676,59 @@ export interface UpdatePlanRequest {
   features?: FeatureKey[] | null;
 }
 
+// ---------- admin: per-message token audit ----------
+
+/** One billed turn (usage_ledger row). Metadata only — never chat content. */
+export interface AdminTurnRowWire {
+  id: number;
+  created_at: string;
+  user_id: number;
+  username: string;
+  surface: string;
+  conversation_id: number | null;
+  message_id: number | null;
+  model_key: string;
+  model_display_name: string;
+  thinking_level: ThinkingLevel | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  /** Charged at the time of the turn (billing truth). */
+  credits: DecimalString;
+  /** Same tokens priced with the model's current weights, per component. */
+  credits_input: DecimalString;
+  credits_output: DecimalString;
+  credits_cache_read: DecimalString;
+}
+
+export interface AdminTurnRow
+  extends Omit<AdminTurnRowWire, 'credits' | 'credits_input' | 'credits_output' | 'credits_cache_read'> {
+  credits: number;
+  credits_input: number;
+  credits_output: number;
+  credits_cache_read: number;
+}
+
+export interface AdminTurnsResponseWire {
+  total: number;
+  rows: AdminTurnRowWire[];
+}
+
+export interface AdminTurnsResponse {
+  total: number;
+  rows: AdminTurnRow[];
+}
+
+export interface AdminTurnsQuery {
+  user_id?: number;
+  surface?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
 // ---------- admin: org usage & audit ----------
 
 export interface AdminUsageByUserWire {

@@ -316,6 +316,13 @@ class UsageLedger(Base):
     cache_write_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     credits: Mapped[Decimal] = mapped_column(Numeric(14, 4), nullable=False)
     request_id: Mapped[str | None] = mapped_column(String(100))
+    # Per-message admin audit (2026-09-14): the assistant message this web-chat
+    # turn produced (a retry reuses the row, so several ledger rows may point at
+    # one message) and the thinking level the turn actually ran with.
+    message_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("messages.id", ondelete="SET NULL")
+    )
+    thinking_level: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

@@ -26,6 +26,7 @@ const AdminTeamsPage = lazy(() => import('@/pages/admin/AdminTeamsPage'));
 const AdminTeamMemoryPage = lazy(() => import('@/pages/admin/AdminTeamMemoryPage'));
 const AdminPoliciesPage = lazy(() => import('@/pages/admin/AdminPoliciesPage'));
 const AdminUsagePage = lazy(() => import('@/pages/admin/AdminUsagePage'));
+const AdminTurnsPage = lazy(() => import('@/pages/admin/AdminTurnsPage'));
 const AdminModelsPage = lazy(() => import('@/pages/admin/AdminModelsPage'));
 const AdminPlansPage = lazy(() => import('@/pages/admin/AdminPlansPage'));
 const AdminServicesPage = lazy(() => import('@/pages/admin/AdminServicesPage'));
@@ -94,6 +95,7 @@ export default function App() {
               <Route path="/admin/teams/:teamId/memory" element={<AdminTeamMemoryPage />} />
               <Route path="/admin/policies" element={<AdminPoliciesPage />} />
               <Route path="/admin/usage" element={<AdminUsagePage />} />
+              <Route path="/admin/turns" element={<AdminTurnsPage />} />
               <Route path="/admin/models" element={<AdminModelsPage />} />
               <Route path="/admin/plans" element={<AdminPlansPage />} />
               <Route path="/admin/services" element={<AdminServicesPage />} />

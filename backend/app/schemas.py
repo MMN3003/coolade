@@ -184,6 +184,40 @@ class AdminUsageResponse(BaseModel):
     daily: list[UsageDailyPoint]
 
 
+# ---------- Admin: per-message token audit (2026-09-14) ----------
+class AdminTurnRow(BaseModel):
+    """One ledger row = one billed turn. Metadata only — never message content
+    (TECH.md 11.1)."""
+
+    id: int
+    created_at: datetime.datetime
+    user_id: int
+    username: str
+    surface: str
+    conversation_id: int | None
+    message_id: int | None
+    model_key: str
+    model_display_name: str
+    thinking_level: str | None
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    # What the user was actually charged (stored at the time of the turn).
+    credits: Decimal
+    # Same tokens priced with the model's CURRENT weights — lets the admin see
+    # which side (input/output/cache) drove the charge. Sums to `credits` unless
+    # the weights were edited after the turn.
+    credits_input: Decimal
+    credits_output: Decimal
+    credits_cache_read: Decimal
+
+
+class AdminTurnsResponse(BaseModel):
+    total: int
+    rows: list[AdminTurnRow]
+
+
 # ---------- Admin: per-user usage report (اصلاحیهٔ ۳ / Issue G) ----------
 class WeeklyQuotaBlock(BaseModel):
     used: Decimal

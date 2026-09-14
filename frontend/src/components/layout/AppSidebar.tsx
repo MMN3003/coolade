@@ -53,6 +53,7 @@ import LightModeIcon from '@mui/icons-material/LightModeOutlined';
 import DarkModeIcon from '@mui/icons-material/DarkModeOutlined';
 import { useTranslation } from 'react-i18next';
 import Logo from '@/components/common/Logo';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { authApi, conversationsApi } from '@/api/endpoints';
@@ -153,6 +154,7 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
     { label: t('nav.adminTeams'), icon: <GroupsOutlinedIcon />, path: '/admin/teams' },
     { label: t('nav.adminPolicies'), icon: <TuneIcon />, path: '/admin/policies' },
     { label: t('nav.adminUsage'), icon: <AssessmentIcon />, path: '/admin/usage' },
+    { label: t('nav.adminTurns'), icon: <ReceiptLongOutlinedIcon />, path: '/admin/turns' },
     { label: t('nav.adminModels'), icon: <MemoryIcon />, path: '/admin/models' },
     { label: t('nav.plans'), icon: <CardMembershipIcon />, path: '/admin/plans' },
     { label: t('nav.services'), icon: <HubIcon />, path: '/admin/services' },

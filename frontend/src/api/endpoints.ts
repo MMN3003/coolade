@@ -1,6 +1,9 @@
 import { api } from './client';
 import { FEATURE_KEYS, type FeatureKey } from '@/api/types';
 import type {
+  AdminTurnsQuery,
+  AdminTurnsResponse,
+  AdminTurnsResponseWire,
   AccountLimitWindow,
   AccountLimitWindowWire,
   AccountLimitsResponse,
@@ -452,6 +455,28 @@ export const adminUsageApi = {
   summary: async (): Promise<AdminUsageResponse> =>
     parseAdminUsage(await api.get<AdminUsageResponseWire>('/api/admin/usage')),
   exportCsvUrl: () => '/api/admin/usage/export.csv',
+  /** Per-message token audit (newest first, paged). */
+  turns: async (query: AdminTurnsQuery): Promise<AdminTurnsResponse> => {
+    const raw = await api.get<AdminTurnsResponseWire>('/api/admin/usage/turns', { ...query });
+    return {
+      total: raw.total,
+      rows: raw.rows.map((r) => ({
+        ...r,
+        credits: num(r.credits),
+        credits_input: num(r.credits_input),
+        credits_output: num(r.credits_output),
+        credits_cache_read: num(r.credits_cache_read),
+      })),
+    };
+  },
+  turnsExportCsvUrl: (query: AdminTurnsQuery) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(query)) {
+      if (v !== undefined && v !== null && v !== '' && k !== 'limit' && k !== 'offset') params.set(k, String(v));
+    }
+    const qs = params.toString();
+    return `/api/admin/usage/turns/export.csv${qs ? `?${qs}` : ''}`;
+  },
   /** Bare array; page with limit/offset — there is no total count. */
   auditLog: (query: AuditLogQuery) => api.get<AuditLogEntry[]>('/api/admin/audit', { ...query }),
 };

@@ -6,6 +6,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import Alert from '@mui/material/Alert';
 import DownloadIcon from '@mui/icons-material/DownloadOutlined';
+import ReceiptLongOutlinedIcon from '@mui/icons-material/ReceiptLongOutlined';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import { useTranslation } from 'react-i18next';
 import { adminUsersApi } from '@/api/endpoints';
@@ -54,14 +55,23 @@ export default function AdminUserUsagePage() {
             {usageQuery.data ? ` — ${usageQuery.data.username}` : ''}
           </Typography>
         </Box>
-        <Button
-          variant="outlined"
-          startIcon={<DownloadIcon />}
-          component="a"
-          href={adminUsersApi.usageExportCsvUrl(userId)}
-        >
-          {t('common.export')}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          <Button
+            variant="outlined"
+            startIcon={<ReceiptLongOutlinedIcon />}
+            onClick={() => navigate(`/admin/turns?user_id=${userId}`)}
+          >
+            {t('admin.userUsage.perMessage')}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<DownloadIcon />}
+            component="a"
+            href={adminUsersApi.usageExportCsvUrl(userId)}
+          >
+            {t('common.export')}
+          </Button>
+        </Box>
       </Box>
 
       <Alert severity="info" sx={{ mb: 3 }}>

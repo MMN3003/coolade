@@ -300,6 +300,8 @@ async def _run_turn_background(
                         cache_write_tokens=usage["cache_write_tokens"],
                         request_id=ev.get("session_id") or session_id_captured,
                         conversation_id=conversation_id,
+                        message_id=assistant_message_id,
+                        thinking_level=(ev.get("thinking_level") or thinking_level.value),
                     )
                     final_text = ev.get("result_text") or "".join(assistant_text_parts)
                     msg = await sdb.get(Message, assistant_message_id)
