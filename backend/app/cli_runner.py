@@ -373,6 +373,10 @@ def _translate_event(
     return events
 
 
+# Largest single stdout line we accept from the CLI (see _run_process).
+STDOUT_LINE_LIMIT = 128 * 1024 * 1024
+
+
 async def _run_process(
     cmd: list[str],
     cwd: Path,
@@ -388,6 +392,11 @@ async def _run_process(
         env=env,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        # stream-json puts a whole tool_result on ONE line; a Read of an attached
+        # image embeds it as base64 (a 50MB upload ≈ 67MB of text). asyncio's
+        # default 64KB StreamReader limit made readline() raise
+        # LimitOverrunError and the turn crashed (2026-09-14, image attachments).
+        limit=STDOUT_LINE_LIMIT,
     )
     deadline = time.monotonic() + timeout
     timed_out = False
