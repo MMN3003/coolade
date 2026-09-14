@@ -23,14 +23,16 @@ from app.deps import client_ip, get_current_user, get_db
 from app.errors import AppError, bad_request, forbidden, model_not_allowed, not_found
 from app.models import Attachment, Conversation, Message, MessageStatus, Model, ModelPolicy, ThinkingLevel, User
 from app.schemas import (
+    AttachmentOut,
     ConversationCreate,
     ConversationDetailOut,
     ConversationOut,
     ConversationUpdate,
+    MessageOut,
     SendMessageRequest,
     TurnAcceptedOut,
 )
-from app.services import ledger, thinking as thinking_service
+from app.services import attachment_text, ledger, thinking as thinking_service
 from app.services.quota import check_quota
 from app.turn_registry import TurnState
 
@@ -153,10 +155,25 @@ async def get_conversation(
             )
         )
     ).scalar_one()
+    attach_rows = (
+        await db.execute(
+            select(Attachment)
+            .where(Attachment.conversation_id == conv.id, Attachment.message_id.is_not(None))
+            .order_by(Attachment.id)
+        )
+    ).scalars().all()
+    by_message: dict[int, list[AttachmentOut]] = {}
+    for a in attach_rows:
+        by_message.setdefault(a.message_id, []).append(AttachmentOut.model_validate(a))
+    messages_out = []
+    for m in msgs.scalars().all():
+        mo = MessageOut.model_validate(m)
+        mo.attachments = by_message.get(m.id, [])
+        messages_out.append(mo)
     out = _conv_to_out(conv, model_key)
     return ConversationDetailOut(
         **out.model_dump(),
-        messages=list(msgs.scalars().all()),
+        messages=messages_out,
         credits_used=credits_used,
         cost_nudge_threshold=settings.chat_cost_nudge_credits,
     )
@@ -387,6 +404,24 @@ async def send_message(
     if not cli_runner.try_acquire_conversation(conv.id):
         raise AppError(409, "chat_busy", "پاسخ قبلی در این گفتگو هنوز در حال پردازش است.")
 
+    # Pending uploads: the explicit ids from the client, or — for a stale/older
+    # client that never sends ids — every still-unlinked upload of this conversation.
+    pending_q = select(Attachment).where(
+        Attachment.conversation_id == conv.id, Attachment.message_id.is_(None)
+    )
+    if body.attachment_ids is not None:
+        # Explicit list ([] means «none») — the current client always sends it.
+        pending_q = pending_q.where(Attachment.id.in_(body.attachment_ids or [-1]))
+    else:
+        # Legacy client: only uploads from the last two hours, so orphaned files
+        # from older sessions never silently ride along.
+        recent_cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=2)
+        pending_q = pending_q.where(Attachment.created_at >= recent_cutoff)
+    pending_attachments = list((await db.execute(pending_q.order_by(Attachment.id))).scalars().all())
+    if not (body.content or "").strip() and not pending_attachments:
+        cli_runner.release_conversation(conv.id)
+        raise bad_request("متن پیام یا حداقل یک پیوست لازم است.")
+
     requested_level = ThinkingLevel(body.thinking_level) if body.thinking_level else None
     effective_level = thinking_service.effective_level(requested_level, conv.thinking_level)
 
@@ -408,14 +443,18 @@ async def send_message(
     # Auto-title from the first user message so new chats don't all stay «گفتگوی جدید».
     # Only overrides the untouched default, never a user-set title.
     if (conv.title or "").strip() in ("", DEFAULT_TITLE):
-        conv.title = _derive_title(body.content)
+        conv.title = _derive_title(body.content or (pending_attachments[0].filename if pending_attachments else ""))
     conv.updated_at = datetime.datetime.now(datetime.timezone.utc)
     try:
+        await db.flush()
+        for a in pending_attachments:
+            a.message_id = user_msg.id
         await db.commit()
     except Exception:
         cli_runner.release_conversation(conv.id)
         raise
     await db.refresh(assistant_msg)
+    prompt = _prompt_with_attachments(body.content, pending_attachments)
 
     state = turn_registry.registry.start(conv.id, assistant_msg.id)
     asyncio.create_task(
@@ -423,7 +462,7 @@ async def send_message(
             conversation_id=conv.id,
             assistant_message_id=assistant_msg.id,
             user_id=user.id,
-            prompt=body.content,
+            prompt=prompt,
             upstream_model=model.upstream_model,
             model_id=model.id,
             resume_session_id=conv.cli_session_id,
@@ -569,13 +608,16 @@ async def retry_message(
         cli_runner.release_conversation(conv.id)
         raise
 
+    retry_prompt = _prompt_with_attachments(
+        prior_user_msg.content, await _attachments_for_message(db, prior_user_msg.id)
+    )
     state = turn_registry.registry.start(conv.id, target.id)
     asyncio.create_task(
         _run_turn_background(
             conversation_id=conv.id,
             assistant_message_id=target.id,
             user_id=user.id,
-            prompt=prior_user_msg.content,
+            prompt=retry_prompt,
             upstream_model=model.upstream_model,
             model_id=model.id,
             resume_session_id=conv.cli_session_id,
@@ -586,22 +628,44 @@ async def retry_message(
     return TurnAcceptedOut(assistant_message_id=target.id, generating=True, thinking_level=effective_level.value)
 
 
-_SAFE_FILENAME_RE = re.compile(r"[^A-Za-z0-9._\-]+")
+# Unicode-aware: Persian/Arabic file names survive (\w matches any letter/digit);
+# path separators, control chars and shell-hostile punctuation collapse to «_».
+_SAFE_FILENAME_RE = re.compile(r"[^\w.\- ()]+", re.UNICODE)
 
 
 def _sanitize_filename(name: str) -> str:
-    base = os.path.basename(name) or "file"
-    cleaned = _SAFE_FILENAME_RE.sub("_", base)
-    return cleaned[:200] or "file"
+    base = os.path.basename(name.replace("\\", "/")) or "file"
+    cleaned = _SAFE_FILENAME_RE.sub("_", base).strip(" ._") or "file"
+    return cleaned[:200]
 
 
-ALLOWED_ATTACHMENT_MIME_PREFIXES = ("text/", "image/", "application/pdf")
-ALLOWED_ATTACHMENT_EXTRA_MIMES = {
-    "application/json",
-    "application/x-python",
-    "application/javascript",
-    "application/octet-stream",
-}
+def _prompt_with_attachments(content: str, attachments: list[Attachment]) -> str:
+    """The CLI runs with cwd = the user's workspace, so every upload is reachable at
+    its relative storage_path. Without this note the model never learns a file was
+    attached at all (the send body is content-only) — that was the «attach works but
+    nothing happens» bug users hit."""
+    if not attachments:
+        return content
+    lines = [
+        "",
+        "",
+        "[پیوست‌های این پیام — فایل‌ها در پوشهٔ کاری هستند؛ با ابزار Read بخوان و در پاسخ لحاظ کن]",
+    ]
+    for a in attachments:
+        line = f"- {a.storage_path}  (نام اصلی: {a.filename}، نوع: {a.mime_type}، حجم: {a.size_bytes} بایت)"
+        sidecar = attachment_text.sidecar_path(a.storage_path)
+        if sidecar:
+            line += f"  — متن استخراج‌شده: {sidecar}"
+        lines.append(line)
+    body = (content or "").rstrip() or "فایل(های) پیوست‌شده را بررسی کن و خلاصه/تحلیل بده."
+    return body + "\n".join(lines)
+
+
+async def _attachments_for_message(db: AsyncSession, message_id: int) -> list[Attachment]:
+    res = await db.execute(
+        select(Attachment).where(Attachment.message_id == message_id).order_by(Attachment.id)
+    )
+    return list(res.scalars().all())
 
 
 @router.post("/conversations/{conversation_id}/attachments")
@@ -620,17 +684,23 @@ async def upload_attachment(
     if len(content) > settings.max_upload_bytes:
         raise bad_request("حجم فایل بیش از سقف مجاز است.")
 
-    mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0] or "application/octet-stream"
-    if not (
-        mime_type.startswith(ALLOWED_ATTACHMENT_MIME_PREFIXES)
-        or mime_type in ALLOWED_ATTACHMENT_EXTRA_MIMES
-    ):
-        raise bad_request("نوع فایل مجاز نیست.")
+    # Every file type is accepted (product request 2026-09-14: users were blocked on
+    # xlsx/docx/zip because the browser-reported MIME missed the old whitelist).
+    # Prefer the extension-derived type: browsers often send a generic
+    # application/octet-stream, which is useless for the model's hint.
+    mime_type = (
+        mimetypes.guess_type(file.filename or "")[0]
+        or file.content_type
+        or "application/octet-stream"
+    )[:150]
 
     safe_name = _sanitize_filename(file.filename or "file")
     stored_name = f"{uuid.uuid4().hex[:12]}_{safe_name}"
     dest = uploads_dir / stored_name
     dest.write_bytes(content)
+    # Office/binary formats the CLI cannot Read directly get a best-effort .txt
+    # sidecar next to them (xlsx/docx/csv …); failures are logged, never fatal.
+    attachment_text.write_sidecar(dest)
 
     relpath = str(dest.relative_to(ws))
     attachment = Attachment(
@@ -644,6 +714,36 @@ async def upload_attachment(
     await db.commit()
     await db.refresh(attachment)
     return {"id": attachment.id, "filename": attachment.filename, "size_bytes": attachment.size_bytes}
+
+
+@router.delete("/attachments/{attachment_id}")
+async def delete_pending_attachment(
+    attachment_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Remove a chip the user discarded BEFORE sending. Once linked to a message the
+    file is part of the history and stays."""
+    attachment = await db.get(Attachment, attachment_id)
+    if not attachment:
+        raise not_found("پیوست یافت نشد.")
+    conv = await db.get(Conversation, attachment.conversation_id)
+    if not conv or conv.user_id != user.id:
+        raise forbidden()
+    if attachment.message_id is not None:
+        raise bad_request("این پیوست قبلاً ارسال شده و قابل حذف نیست.")
+    ws = cli_runner.workspace_dir(user.id)
+    candidate = Path(os.path.realpath(ws / attachment.storage_path))
+    if str(candidate).startswith(str(ws.resolve()) + os.sep):
+        for path in (candidate, attachment_text.sidecar_for(candidate)):
+            try:
+                if path is not None:
+                    path.unlink(missing_ok=True)
+            except OSError:
+                logger.warning("attachment unlink failed: %s", path, exc_info=True)
+    await db.delete(attachment)
+    await db.commit()
+    return {"ok": True}
 
 
 @router.get("/attachments/{attachment_id}")

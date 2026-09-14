@@ -16,3 +16,6 @@ email-validator==2.2.0
 python-dateutil==2.9.0.post0
 oracledb==4.0.2
 pymssql==2.4.1
+openpyxl==3.1.5
+python-docx==1.1.2
+python-pptx==1.0.2

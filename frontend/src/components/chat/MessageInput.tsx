@@ -17,7 +17,7 @@ interface Props {
   uploading?: boolean;
   pendingAttachments: AttachmentUploadResponse[];
   onRemovePendingAttachment: (id: number) => void;
-  onAttachFile: (file: File) => void;
+  onAttachFile: (file: File) => void | Promise<void>;
   onSend: (content: string) => void;
   /** Stop the in-progress generation (send button morphs into a stop button). */
   onStop?: () => void;
@@ -47,7 +47,8 @@ export default function MessageInput({
 
   function handleSend() {
     const trimmed = value.trim();
-    if (!trimmed || disabled || sending) return;
+    // A file-only turn is fine: the backend requires text OR ≥1 attachment.
+    if ((!trimmed && pendingAttachments.length === 0) || disabled || sending || uploading) return;
     onSend(trimmed);
     setValue('');
   }
@@ -59,13 +60,17 @@ export default function MessageInput({
     }
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) onAttachFile(file);
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    // Reset first: some mobile browsers won't re-fire `change` for the same
+    // file otherwise, and the upload below may take a while.
     e.target.value = '';
+    for (const file of files) {
+      await onAttachFile(file);
+    }
   }
 
-  const canSend = !disabled && !sending && !!value.trim();
+  const canSend = !disabled && !sending && !uploading && (!!value.trim() || pendingAttachments.length > 0);
 
   return (
     <Box>
@@ -90,7 +95,7 @@ export default function MessageInput({
           '&:focus-within': { borderColor: 'text.secondary' },
         }}
       >
-        <input ref={fileInputRef} type="file" hidden onChange={handleFileChange} />
+        <input ref={fileInputRef} type="file" multiple hidden onChange={handleFileChange} />
         <Tooltip title={t('chat.attachFile')}>
           <span>
             <IconButton

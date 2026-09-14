@@ -74,6 +74,13 @@ class ConversationOut(ORMModel):
     updated_at: datetime.datetime
 
 
+class AttachmentOut(ORMModel):
+    id: int
+    filename: str
+    mime_type: str
+    size_bytes: int
+
+
 class MessageOut(ORMModel):
     id: int
     role: str
@@ -84,6 +91,7 @@ class MessageOut(ORMModel):
     error_reason: str | None = None
     thinking_level: str | None = None  # Issue D — effective level used (badge source)
     created_at: datetime.datetime
+    attachments: list[AttachmentOut] = []  # user rows only; files sent with that message
 
 
 class ConversationDetailOut(ConversationOut):
@@ -95,8 +103,12 @@ class ConversationDetailOut(ConversationOut):
 
 
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = ""  # may be empty when attachment_ids is non-empty
     thinking_level: ThinkingLevelLiteral | None = None  # Issue D — optional override, sticky
+    # Pending uploads (POST …/attachments ids) to link to this user message and
+    # surface to the model. Omitted/None → every still-unlinked upload of the
+    # conversation is linked (compat with clients that predate this field).
+    attachment_ids: list[int] | None = None
 
 
 class TurnAcceptedOut(BaseModel):

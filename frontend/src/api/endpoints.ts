@@ -299,6 +299,9 @@ export const conversationsApi = {
     return res.json() as Promise<AttachmentUploadResponse>;
   },
   attachmentDownloadUrl: (attachmentId: number) => `/api/attachments/${attachmentId}`,
+  /** Discard a pending (not yet sent) upload; 400 once it belongs to a sent message. */
+  deleteAttachment: (attachmentId: number) =>
+    api.delete<{ ok: boolean }>(`/api/attachments/${attachmentId}`),
 };
 
 // ---------- workspace files (F4.6; اصلاحیهٔ ۶ web editor) ----------

@@ -236,25 +236,30 @@ export default function ChatPage() {
     const id = await ensureConversationId();
     if (!id) return;
 
+    const attachments = pendingAttachments;
     setOptimisticUserMessage({
       id: -1,
       role: 'user',
       content,
       created_at: new Date().toISOString(),
       status: 'complete',
+      attachments,
     });
-    // Uploaded attachments are already in the workspace; the send body only
-    // needs {content, thinking_level?} per the contract — just clear the chips.
+    // The ids travel with the send so the backend links the files to this
+    // message and tells the model about them; chips clear optimistically and
+    // come back on failure.
     setPendingAttachments([]);
 
     try {
       const accepted = await conversationsApi.sendMessage(id, {
         content,
         thinking_level: selectedThinkingLevel,
+        attachment_ids: attachments.map((a) => a.id),
       });
       stream.attach(id, accepted.assistant_message_id, streamCallbacks);
     } catch (err) {
       setOptimisticUserMessage(null);
+      setPendingAttachments(attachments);
       if (err instanceof ApiError && err.code === 'chat_busy') {
         setSendError(t('chat.chatBusy'));
       } else if (err instanceof ApiError && err.code === 'quota_exceeded_5h') {
@@ -334,9 +339,12 @@ export default function ChatPage() {
       sending={isBusy}
       uploading={uploading}
       pendingAttachments={pendingAttachments}
-      onRemovePendingAttachment={(id) =>
-        setPendingAttachments((prev) => prev.filter((a) => a.id !== id))
-      }
+      onRemovePendingAttachment={(id) => {
+        setPendingAttachments((prev) => prev.filter((a) => a.id !== id));
+        // Server-side discard too — otherwise the backend's «link every pending
+        // upload» fallback would still hand the file to the model.
+        conversationsApi.deleteAttachment(id).catch(() => undefined);
+      }}
       onAttachFile={handleAttachFile}
       onSend={handleSend}
       onStop={conversationId ? handleStop : undefined}

@@ -169,6 +169,8 @@ export interface Message {
   error_reason?: string | null;
   /** اصلاحیهٔ ۲ / Issue D — effective thinking level used for this assistant turn; null/absent for user rows. */
   thinking_level?: ThinkingLevel | null;
+  /** Files sent with this user message (empty/absent for assistant rows). */
+  attachments?: AttachmentUploadResponse[];
 }
 
 export interface ConversationDetail extends Conversation {
@@ -196,8 +198,11 @@ export interface UpdateConversationRequest {
  * omission means "use the conversation's current default".
  */
 export interface SendMessageRequest {
+  /** May be empty when `attachment_ids` is non-empty (file-only turn). */
   content: string;
   thinking_level?: ThinkingLevel;
+  /** Pending upload ids (POST …/attachments) to link to this message and hand to the model. */
+  attachment_ids?: number[];
 }
 
 /**
@@ -217,6 +222,7 @@ export interface AttachmentUploadResponse {
   id: number;
   filename: string;
   size_bytes: number;
+  mime_type?: string;
 }
 
 /**

@@ -11,6 +11,7 @@ import PsychologyOutlinedIcon from '@mui/icons-material/PsychologyOutlined';
 import { useTranslation } from 'react-i18next';
 import type { Message, ThinkingLevel } from '@/api/types';
 import MarkdownMessage from './MarkdownMessage';
+import AttachmentChip from './AttachmentChip';
 import EmptyState from '@/components/common/EmptyState';
 import { SURFACE_2 } from '@/theme/theme';
 
@@ -182,7 +183,16 @@ export default function MessageList({ messages, live, onRetry, retryPendingId, s
                   </Box>
                 )
               ) : (
-                <Typography sx={{ whiteSpace: 'pre-wrap' }}>{m.content}</Typography>
+                <Box>
+                  {m.content && <Typography sx={{ whiteSpace: 'pre-wrap' }}>{m.content}</Typography>}
+                  {m.attachments && m.attachments.length > 0 && (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: m.content ? 1 : 0 }}>
+                      {m.attachments.map((a) => (
+                        <AttachmentChip key={a.id} attachment={a} />
+                      ))}
+                    </Box>
+                  )}
+                </Box>
               )}
             </Paper>
           </Box>

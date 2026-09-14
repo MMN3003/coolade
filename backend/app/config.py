@@ -138,7 +138,7 @@ class Settings(BaseSettings):
     admin_email: str = ""
 
     attachments_dir: str = "/data/attachments"
-    max_upload_bytes: int = 20 * 1024 * 1024
+    max_upload_bytes: int = 50 * 1024 * 1024
 
     cors_origins: str = ""
 
