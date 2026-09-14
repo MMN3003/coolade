@@ -18,6 +18,7 @@ from app.schemas import (
 )
 from app.security import create_session_cookie, login_attempts, verify_password
 from app.services import thinking as thinking_service
+from app.services import features as features_service
 from app.services.audit import record_audit
 from app.services.quota import get_or_create_quota, get_used_credits
 
@@ -187,4 +188,5 @@ async def me(user: User = Depends(get_current_user), db: AsyncSession = Depends(
             period_start=quota.period_start,
         ),
         teams=teams,
+        features=await features_service.user_features(db, user),
     )

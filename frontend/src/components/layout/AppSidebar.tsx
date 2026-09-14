@@ -56,7 +56,7 @@ import Logo from '@/components/common/Logo';
 import { useAuthStore } from '@/store/authStore';
 import { useUiStore } from '@/store/uiStore';
 import { authApi, conversationsApi } from '@/api/endpoints';
-import type { Conversation } from '@/api/types';
+import type { Conversation, FeatureKey } from '@/api/types';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { getErrorMessage } from '@/utils/errors';
 
@@ -133,16 +133,20 @@ export default function AppSidebar({ onNavigate, onCollapse }: Props) {
     },
   });
 
-  const userItems: NavItem[] = [
-    { label: t('nav.chat'), icon: <ChatIcon />, path: '/chat' },
-    { label: t('nav.workspaces', 'ورک‌اسپیس‌های کد'), icon: <CodeIcon />, path: '/workspaces' },
-    { label: t('nav.cli', 'اتصال ابزارها'), icon: <TerminalIcon />, path: '/cli' },
-    { label: t('nav.help'), icon: <HelpIcon />, path: '/help' },
-    { label: t('nav.usage'), icon: <BarChartIcon />, path: '/usage' },
-    { label: t('nav.keys'), icon: <KeyIcon />, path: '/keys' },
-    { label: t('nav.teams'), icon: <GroupsOutlinedIcon />, path: '/teams' },
-    { label: t('nav.knowledge'), icon: <PsychologyOutlinedIcon />, path: '/knowledge' },
-  ];
+  // Plan-gated entries carry a `feature`; chat/help are always shown.
+  const features = user?.features ?? [];
+  const userItems: NavItem[] = (
+    [
+      { label: t('nav.chat'), icon: <ChatIcon />, path: '/chat' },
+      { label: t('nav.workspaces', 'ورک‌اسپیس‌های کد'), icon: <CodeIcon />, path: '/workspaces', feature: 'workspaces' },
+      { label: t('nav.cli', 'اتصال ابزارها'), icon: <TerminalIcon />, path: '/cli', feature: 'cli' },
+      { label: t('nav.help'), icon: <HelpIcon />, path: '/help' },
+      { label: t('nav.usage'), icon: <BarChartIcon />, path: '/usage', feature: 'usage' },
+      { label: t('nav.keys'), icon: <KeyIcon />, path: '/keys', feature: 'keys' },
+      { label: t('nav.teams'), icon: <GroupsOutlinedIcon />, path: '/teams', feature: 'teams' },
+      { label: t('nav.knowledge'), icon: <PsychologyOutlinedIcon />, path: '/knowledge', feature: 'knowledge' },
+    ] as (NavItem & { feature?: FeatureKey })[]
+  ).filter((item) => !item.feature || features.includes(item.feature));
 
   const adminItems: NavItem[] = [
     { label: t('nav.adminUsers'), icon: <PeopleIcon />, path: '/admin/users' },

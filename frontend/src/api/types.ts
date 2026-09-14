@@ -133,13 +133,25 @@ export interface MeResponseWire {
    * regenerated and this is frozen; `parseMe` below defaults it to `[]`.
    */
   teams?: MeTeam[];
+  /** Plan-gated areas (FeatureKey[]); absent on older backends = all. */
+  features?: string[];
 }
 
-export interface MeResponse extends Omit<MeResponseWire, 'quota' | 'teams'> {
+export interface MeResponse extends Omit<MeResponseWire, 'quota' | 'teams' | 'features'> {
   quota: QuotaSummary | null;
   /** Always resolved to an array by `parseMe` (see MeResponseWire.teams note). */
   teams: MeTeam[];
+  /** Product areas this user's plan exposes; `parseMe` defaults to all. */
+  features: FeatureKey[];
 }
+
+/**
+ * Plan-gated product areas (backend app/services/features.py). Chat and help
+ * are always visible; everything else is shown only when the user's plan
+ * lists it. Order = sidebar order.
+ */
+export const FEATURE_KEYS = ['workspaces', 'cli', 'usage', 'keys', 'teams', 'knowledge'] as const;
+export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 // ---------- conversations / chat ----------
 
@@ -608,6 +620,7 @@ export interface PlanWire {
   is_active: boolean;
   sort_order: number;
   model_ids: number[];
+  features?: FeatureKey[] | null;
   member_count: number;
   created_at: string;
 }
@@ -624,6 +637,8 @@ export interface Plan {
   is_active: boolean;
   sort_order: number;
   model_ids: number[];
+  /** null = every feature (legacy plan). */
+  features: FeatureKey[] | null;
   member_count: number;
   created_at: string;
 }
@@ -643,6 +658,7 @@ export interface CreatePlanRequest {
   is_active?: boolean;
   sort_order?: number;
   model_ids?: number[];
+  features?: FeatureKey[] | null;
 }
 
 /** PATCH /api/admin/plans/{id} body — all fields optional (partial update). */
@@ -656,6 +672,8 @@ export interface UpdatePlanRequest {
   is_active?: boolean;
   sort_order?: number;
   model_ids?: number[];
+  /** null restores «all features». */
+  features?: FeatureKey[] | null;
 }
 
 // ---------- admin: org usage & audit ----------

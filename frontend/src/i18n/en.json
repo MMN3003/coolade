@@ -172,6 +172,8 @@
     "deleteConfirmBody": "Delete plan “{{name}}”? Its members lose the plan association but keep their current quota and models.",
     "fieldLabel": "Plan",
     "fieldHint": "Choosing a plan makes the user inherit its quota, models and thinking cap.",
+    "features": "Visible tools",
+    "featuresHint": "Only the selected areas appear in this plan's members' menu (chat and help are always on). Users without a plan see everything.",
     "none": "— No plan —"
   },
   "services": {

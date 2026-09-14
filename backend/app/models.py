@@ -246,6 +246,9 @@ class Plan(Base):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Which product areas members see (sidebar + routes + their APIs). List of
+    # app/services/features.py::FEATURE_KEYS; NULL = every feature (legacy plans).
+    features: Mapped[list | None] = mapped_column(JSONB)
     created_at: Mapped[datetime.datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False, server_default=func.now()
     )

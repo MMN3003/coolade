@@ -47,6 +47,8 @@ class MeResponse(BaseModel):
     max_thinking_level: str  # Issue D — caps the web chat thinking-level picker
     teams: list[MeTeamOut] = []  # اصلاحیهٔ ۴ / Issue H
     learning_enabled: bool = True  # amendment-7 — chat-learning opt-out
+    # Product areas this user may see (from their plan; admins/no-plan = all).
+    features: list[str] = []
 
 
 # ---------- Conversations ----------
@@ -324,6 +326,8 @@ class PlanCreate(BaseModel):
     is_active: bool = True
     sort_order: int = 0
     model_ids: list[int] = []
+    # Visible product areas for members (services/features.py keys); None = all.
+    features: list[str] | None = None
 
 
 class PlanUpdate(BaseModel):
@@ -337,6 +341,7 @@ class PlanUpdate(BaseModel):
     is_active: bool | None = None
     sort_order: int | None = None
     model_ids: list[int] | None = None
+    features: list[str] | None = None  # present-and-null = back to «all»
 
 
 class PlanOut(BaseModel):
@@ -352,6 +357,7 @@ class PlanOut(BaseModel):
     sort_order: int
     model_ids: list[int] = []
     member_count: int = 0
+    features: list[str] | None = None
     created_at: datetime.datetime
 
 

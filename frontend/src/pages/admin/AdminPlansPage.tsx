@@ -36,7 +36,7 @@ import DeleteIcon from '@mui/icons-material/DeleteOutline';
 import GroupAddIcon from '@mui/icons-material/GroupAddOutlined';
 import { useTranslation } from 'react-i18next';
 import { adminModelsApi, plansApi } from '@/api/endpoints';
-import type { Plan, ThinkingLevel } from '@/api/types';
+import { FEATURE_KEYS, type FeatureKey, type Plan, type ThinkingLevel } from '@/api/types';
 import { getErrorMessage } from '@/utils/errors';
 import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
@@ -49,6 +49,7 @@ interface PlanForm {
   max_thinking_level: ThinkingLevel;
   is_active: boolean;
   model_ids: number[];
+  features: FeatureKey[];
 }
 
 const emptyForm: PlanForm = {
@@ -59,6 +60,17 @@ const emptyForm: PlanForm = {
   max_thinking_level: 'standard',
   is_active: true,
   model_ids: [],
+  features: [...FEATURE_KEYS],
+};
+
+/** Sidebar labels double as the feature names (nav.* keys). */
+const FEATURE_LABEL_KEY: Record<FeatureKey, string> = {
+  workspaces: 'nav.workspaces',
+  cli: 'nav.cli',
+  usage: 'nav.usage',
+  keys: 'nav.keys',
+  teams: 'nav.teams',
+  knowledge: 'nav.knowledge',
 };
 
 export default function AdminPlansPage() {
@@ -96,6 +108,8 @@ export default function AdminPlansPage() {
       max_thinking_level: plan.max_thinking_level,
       is_active: plan.is_active,
       model_ids: plan.model_ids,
+      // null on the wire = legacy «everything»; the form always edits an explicit list.
+      features: plan.features ?? [...FEATURE_KEYS],
     });
     setDialogOpen(true);
   }
@@ -109,6 +123,7 @@ export default function AdminPlansPage() {
       max_thinking_level: form.max_thinking_level,
       is_active: form.is_active,
       model_ids: form.model_ids,
+      features: form.features,
     };
   }
 
@@ -279,6 +294,37 @@ export default function AdminPlansPage() {
                   </MenuItem>
                 ))}
               </Select>
+            </FormControl>
+            <FormControl fullWidth>
+              <InputLabel id="plan-features-label">{t('plans.features')}</InputLabel>
+              <Select
+                labelId="plan-features-label"
+                multiple
+                value={form.features}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  const list = (typeof v === 'string' ? v.split(',') : v) as FeatureKey[];
+                  setForm({ ...form, features: FEATURE_KEYS.filter((k) => list.includes(k)) });
+                }}
+                input={<OutlinedInput label={t('plans.features')} />}
+                renderValue={(selected) => (
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                    {(selected as FeatureKey[]).map((k) => (
+                      <Chip key={k} size="small" label={t(FEATURE_LABEL_KEY[k])} />
+                    ))}
+                  </Box>
+                )}
+              >
+                {FEATURE_KEYS.map((k) => (
+                  <MenuItem key={k} value={k}>
+                    <Checkbox checked={form.features.includes(k)} />
+                    <ListItemText primary={t(FEATURE_LABEL_KEY[k])} />
+                  </MenuItem>
+                ))}
+              </Select>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                {t('plans.featuresHint')}
+              </Typography>
             </FormControl>
             <TextField
               select

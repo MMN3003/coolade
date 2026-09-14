@@ -50,6 +50,22 @@ async def require_admin(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_feature(*keys: str):
+    """Router-level gate: the user's plan must expose at least one of `keys`
+    (app/services/features.py). Mirrors the sidebar/route hiding so a hidden
+    area cannot be reached by URL or direct API call."""
+
+    async def _dep(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> User:
+        from app.services.features import user_features  # local: avoids an import cycle
+
+        granted = await user_features(db, user)
+        if not any(k in granted for k in keys):
+            raise forbidden("این بخش در پلن شما فعال نیست.")
+        return user
+
+    return _dep
+
+
 class ApiKeyPrincipal:
     def __init__(self, user: User, api_key: ApiKey) -> None:
         self.user = user

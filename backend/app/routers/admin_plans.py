@@ -18,6 +18,7 @@ from app.models import Model, Plan, PlanModel, QuotaPeriod, ThinkingLevel, User
 from app.schemas import PlanCreate, PlanOut, PlanUpdate
 from app.services.audit import record_audit
 from app.services.plans import apply_plan_to_user, plan_model_ids
+from app.services import features as features_service
 
 router = APIRouter(prefix="/api/admin/plans", tags=["admin-plans"])
 
@@ -91,8 +92,16 @@ def _plan_out(plan: Plan, model_ids: list[int], member_count: int) -> PlanOut:
         sort_order=plan.sort_order,
         model_ids=list(model_ids),
         member_count=member_count,
+        features=plan.features,
         created_at=plan.created_at,
     )
+
+
+def _normalize_features(features: list[str] | None) -> list[str] | None:
+    try:
+        return features_service.normalize(features)
+    except ValueError as exc:
+        raise bad_request(f"کلید ابزار نامعتبر: {exc}") from exc
 
 
 @router.get("", response_model=list[PlanOut])
@@ -130,6 +139,7 @@ async def create_plan(
         max_thinking_level=ThinkingLevel(body.max_thinking_level),
         is_active=body.is_active,
         sort_order=body.sort_order,
+        features=_normalize_features(body.features),
     )
     db.add(plan)
     await db.flush()
@@ -192,6 +202,8 @@ async def update_plan(
         plan.is_active = data["is_active"]
     if "sort_order" in data and data["sort_order"] is not None:
         plan.sort_order = data["sort_order"]
+    if "features" in data:  # present-and-null restores «all features»
+        plan.features = _normalize_features(data["features"])
 
     if "model_ids" in data and data["model_ids"] is not None:
         model_ids = await _validate_model_ids(db, data["model_ids"])

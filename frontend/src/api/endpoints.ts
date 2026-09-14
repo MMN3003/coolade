@@ -1,4 +1,5 @@
 import { api } from './client';
+import { FEATURE_KEYS, type FeatureKey } from '@/api/types';
 import type {
   AccountLimitWindow,
   AccountLimitWindowWire,
@@ -127,7 +128,10 @@ function parseAdminQuota(q: AdminQuotaWire | null): AdminQuota | null {
 function parseMe(raw: MeResponseWire): MeResponse {
   // اصلاحیهٔ ۴ / Issue H — `teams` optional on the wire until Dev1 ships it
   // (types.ts's file-header note); default to [] so callers never null-check.
-  return { ...raw, quota: parseQuota(raw.quota), teams: raw.teams ?? [] };
+  const features = (raw.features ?? [...FEATURE_KEYS]).filter((f): f is FeatureKey =>
+    (FEATURE_KEYS as readonly string[]).includes(f),
+  );
+  return { ...raw, quota: parseQuota(raw.quota), teams: raw.teams ?? [], features };
 }
 
 /** اصلاحیهٔ ۳ / Issue E — null when the backend hasn't shipped the flat 5h fields yet, or no cap is set. */
@@ -170,6 +174,7 @@ function parsePlan(raw: PlanWire): Plan {
     ...raw,
     limit_credits: num(raw.limit_credits),
     limit_credits_5h: numOrNull(raw.limit_credits_5h),
+    features: raw.features ?? null,
   };
 }
 

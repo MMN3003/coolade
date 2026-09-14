@@ -4,7 +4,7 @@ import { setUnauthorizedHandler } from '@/api/client';
 import { useAuthStore } from '@/store/authStore';
 import { useSession } from '@/hooks/useSession';
 import AppShell from '@/components/layout/AppShell';
-import { RequireAdmin, RequireAuth } from '@/components/layout/RouteGuards';
+import { RequireAdmin, RequireAuth, RequireFeature } from '@/components/layout/RouteGuards';
 import LoadingState from '@/components/common/LoadingState';
 
 // Route-level code splitting: login/shell load eagerly, everything behind
@@ -66,13 +66,25 @@ export default function App() {
             <Route path="/" element={<Navigate to="/chat" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/chat/:conversationId" element={<ChatPage />} />
-            <Route path="/workspaces" element={<WorkspacesPage />} />
-            <Route path="/cli" element={<CliOnboardingPage />} />
-            <Route path="/usage" element={<UsagePage />} />
-            <Route path="/keys" element={<KeysPage />} />
-            <Route path="/teams" element={<TeamsPage />} />
-            <Route path="/teams/:teamId/memory" element={<TeamMemoryPage />} />
-            <Route path="/knowledge" element={<KnowledgePage />} />
+            <Route element={<RequireFeature features={['workspaces']} />}>
+              <Route path="/workspaces" element={<WorkspacesPage />} />
+            </Route>
+            <Route element={<RequireFeature features={['cli']} />}>
+              <Route path="/cli" element={<CliOnboardingPage />} />
+            </Route>
+            <Route element={<RequireFeature features={['usage']} />}>
+              <Route path="/usage" element={<UsagePage />} />
+            </Route>
+            <Route element={<RequireFeature features={['keys']} />}>
+              <Route path="/keys" element={<KeysPage />} />
+            </Route>
+            <Route element={<RequireFeature features={['teams']} />}>
+              <Route path="/teams" element={<TeamsPage />} />
+              <Route path="/teams/:teamId/memory" element={<TeamMemoryPage />} />
+            </Route>
+            <Route element={<RequireFeature features={['knowledge']} />}>
+              <Route path="/knowledge" element={<KnowledgePage />} />
+            </Route>
             <Route path="/help" element={<HelpPage />} />
 
             <Route element={<RequireAdmin />}>

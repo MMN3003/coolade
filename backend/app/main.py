@@ -5,7 +5,7 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.db import async_session_factory
 from app.errors import AppError, app_error_handler, unhandled_error_handler, validation_error_handler
 from app.internal import router as internal_router
+from app.deps import require_feature
 from app.routers import (
     admin_knowledge,
     admin_models,
@@ -118,11 +119,13 @@ app.include_router(health.router)
 app.include_router(auth.router)
 app.include_router(conversations.router)
 app.include_router(workspace.router)
-app.include_router(workspaces_v2.router)
-app.include_router(teams.router)
-app.include_router(knowledge.router)
-app.include_router(keys.router)
-app.include_router(usage.router)
+# Plan feature gates (services/features.py): a hidden area's API is closed too.
+app.include_router(workspaces_v2.router, dependencies=[Depends(require_feature("workspaces"))])
+app.include_router(teams.router, dependencies=[Depends(require_feature("teams"))])
+app.include_router(knowledge.router, dependencies=[Depends(require_feature("knowledge"))])
+# The CLI onboarding page issues personal keys, so either area keeps /api/keys open.
+app.include_router(keys.router, dependencies=[Depends(require_feature("keys", "cli"))])
+app.include_router(usage.router, dependencies=[Depends(require_feature("usage"))])
 # v2 — the old CLI-wrapping web service (/v1 passthrough for Cline) is removed
 # (PRD-V2 L1/decision-2). Only the raw relay (/relay/v1) remains for agents.
 app.include_router(relay.router)
