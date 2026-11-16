@@ -1,0 +1,7 @@
+# Production web tier: built SPA (minified) + reverse proxy to the backend.
+ARG FRONTEND_IMAGE=ecocode-frontend:latest
+FROM ${FRONTEND_IMAGE} AS spa
+FROM nginx:1.27-alpine
+COPY files/web-nginx.conf /etc/nginx/nginx.conf
+RUN rm -rf /usr/share/nginx/html/*
+COPY --from=spa /usr/share/nginx/html/ /usr/share/nginx/html/

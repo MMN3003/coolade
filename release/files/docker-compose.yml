@@ -1,0 +1,100 @@
+# EcoCode Gateway - production stack (prebuilt images only, no source code).
+# The web container listens on 127.0.0.1 only; the host's nginx terminates TLS
+# for the public domain and proxies to it.
+name: ecocode
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+networks:
+  ecocode_net: {}
+
+volumes:
+  postgres_data:
+  users_data:
+  services_data:
+  teams_data:
+  attachments_data:
+  claude_state:
+
+services:
+  postgres:
+    image: ecocode-postgres:${ECOCODE_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [ecocode_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  backend:
+    image: ecocode-backend:${ECOCODE_VERSION}
+    restart: unless-stopped
+    environment:
+      ECOCODE_ENV: prod
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      UPSTREAM_MODE: ${UPSTREAM_MODE:-cli_creds}
+      UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.anthropic.com}
+      UPSTREAM_OAUTH_TOKEN_URL: ${UPSTREAM_OAUTH_TOKEN_URL:-https://console.anthropic.com/v1/oauth/token}
+      UPSTREAM_OAUTH_CLIENT_ID: ${UPSTREAM_OAUTH_CLIENT_ID:-9d1c250a-e61b-44d9-88ed-5944d1962f5e}
+      CLAUDE_CREDS_DIR: /host_claude
+      CLI_MAX_CONCURRENCY: ${CLI_MAX_CONCURRENCY:-4}
+      CLI_TIMEOUT_SECONDS: ${CLI_TIMEOUT_SECONDS:-300}
+      MOCK_CLI: ${MOCK_CLI:-0}
+      THINKING_MAX_LEVEL: ${THINKING_MAX_LEVEL:-deep}
+      ROLLING_WINDOW_HOURS: ${ROLLING_WINDOW_HOURS:-5}
+      SANDBOX_ENABLED: "0"
+      ECOCODE_SECRET_KEY: ${ECOCODE_SECRET_KEY}
+      SESSION_SECRET: ${SESSION_SECRET}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ECOCODE_DATABASE_URL: postgresql+asyncpg://ecocode:${POSTGRES_PASSWORD}@postgres:5432/ecocode
+      LITELLM_MASTER_KEY: ${INTERNAL_API_KEY}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: backend,postgres,web,localhost,127.0.0.1
+      LDAP_ENABLED: ${LDAP_ENABLED:-false}
+      LDAP_URI: ${LDAP_URI:-}
+      LDAP_BASE_DN: ${LDAP_BASE_DN:-}
+      LDAP_BIND_TEMPLATE: ${LDAP_BIND_TEMPLATE:-}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+    volumes:
+      - users_data:/data/users
+      - services_data:/data/services
+      - teams_data:/data/teams
+      - attachments_data:/data/attachments
+      - claude_state:/home/app/.claude
+      - ${CLAUDE_CREDS_DIR}:/host_claude:ro
+    networks: [ecocode_net]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    mem_limit: ${BACKEND_MEM_LIMIT:-6g}
+    logging: *logging
+
+  web:
+    image: ecocode-web:${ECOCODE_VERSION}
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${WEB_PORT:-8085}:80"
+    networks:
+      ecocode_net:
+        aliases: [nginx]
+    depends_on:
+      backend: { condition: service_started }
+    logging: *logging
