@@ -29,6 +29,8 @@ class Settings(BaseSettings):
 
     ecocode_secret_key: str = "0" * 44  # Fernet key (base64, 32 bytes) - override in prod
     session_secret: str = "dev-insecure-session-secret-change-me"
+    # None → Secure cookie only in prod. Set COOKIE_SECURE=false when serving prod over plain HTTP.
+    cookie_secure: str = ""  # "", "true" or "false"
 
     postgres_password: str = "postgres"
     ecocode_database_url: str = (

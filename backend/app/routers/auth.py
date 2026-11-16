@@ -83,7 +83,7 @@ async def login(
         cookie_value,
         max_age=settings.session_max_age_seconds,
         httponly=True,
-        secure=settings.ecocode_env == "prod",
+        secure=(settings.cookie_secure.strip().lower() in ("1", "true", "yes")) if settings.cookie_secure.strip() else settings.ecocode_env == "prod",
         samesite="lax",
         path="/",
     )
