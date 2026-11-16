@@ -42,6 +42,8 @@ const tokens = {
     outline: '#2f2f2f',
     selectedBg: 'rgba(255,255,255,0.08)',
     selectedHover: 'rgba(255,255,255,0.12)',
+    scrollThumb: 'rgba(255,255,255,0.16)',
+    scrollThumbHover: 'rgba(255,255,255,0.30)',
   },
   light: {
     secondary: '#1f8f85',
@@ -55,6 +57,8 @@ const tokens = {
     outline: '#dcdcdc',
     selectedBg: 'rgba(0,0,0,0.06)',
     selectedHover: 'rgba(0,0,0,0.10)',
+    scrollThumb: 'rgba(0,0,0,0.18)',
+    scrollThumbHover: 'rgba(0,0,0,0.34)',
   },
 } as const;
 
@@ -84,6 +88,35 @@ export function makeTheme(mode: ThemeMode): Theme {
           styleOverrides: {
             ':root': {
               '--ec-surface-2': c.surface2,
+            },
+            // Thin, rounded, theme-tinted scrollbars everywhere (chat list,
+            // sidebar, code blocks, dialogs) instead of the chunky OS default.
+            // Firefox uses the standard properties; Chromium/Safari the
+            // ::-webkit-scrollbar pseudo-elements. The thumb is inset with a
+            // transparent border so it reads as a slim pill on a clear track.
+            '*': {
+              scrollbarWidth: 'thin',
+              scrollbarColor: `${c.scrollThumb} transparent`,
+            },
+            '*::-webkit-scrollbar': {
+              width: 10,
+              height: 10,
+            },
+            '*::-webkit-scrollbar-track': {
+              background: 'transparent',
+            },
+            '*::-webkit-scrollbar-thumb': {
+              backgroundColor: c.scrollThumb,
+              borderRadius: 999,
+              border: '3px solid transparent',
+              backgroundClip: 'content-box',
+              minHeight: 32,
+            },
+            '*::-webkit-scrollbar-thumb:hover': {
+              backgroundColor: c.scrollThumbHover,
+            },
+            '*::-webkit-scrollbar-corner': {
+              background: 'transparent',
             },
           },
         },

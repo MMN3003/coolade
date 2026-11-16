@@ -79,7 +79,12 @@ export default function ChatPage() {
     ? conversationQuery.data?.thinking_level ?? 'standard'
     : newChatThinkingLevel;
 
-  const [optimisticUserMessage, setOptimisticUserMessage] = useState<Message | null>(null);
+  // The user's just-sent message, shown until the server's copy shows up in
+  // the refetched conversation. `baseCount` = how many canonical messages
+  // existed at send time, so we can tell when the persisted row has arrived.
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<
+    { message: Message; baseCount: number } | null
+  >(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [retryPendingId, setRetryPendingId] = useState<number | null>(null);
   const [pendingAttachments, setPendingAttachments] = useState<AttachmentUploadResponse[]>([]);
@@ -104,11 +109,15 @@ export default function ChatPage() {
   // Finalize a turn (done/error/idle): refresh canonical messages + sidebar +
   // quota, then drop the local live overlay. `stream.reset()` only tears down
   // OUR reader; the turn itself is already finished server-side by this point.
-  async function finishTurn(invalidateFiles: boolean) {
-    if (conversationId) {
-      await queryClient.invalidateQueries({ queryKey: ['conversation', conversationId] });
-      await queryClient.refetchQueries({ queryKey: ['conversation', conversationId] });
-    }
+  //
+  // `turnConversationId` is passed explicitly rather than read from the
+  // render closure: for a brand-new chat the callbacks are created while the
+  // URL has no id yet, so a closed-over `conversationId` would be undefined,
+  // the refetch would be skipped, and the finished reply would stay hidden
+  // behind the stale (empty, still-'streaming') cached row until a reload.
+  async function finishTurn(turnConversationId: number, invalidateFiles: boolean) {
+    await queryClient.invalidateQueries({ queryKey: ['conversation', turnConversationId] });
+    await queryClient.refetchQueries({ queryKey: ['conversation', turnConversationId] });
     queryClient.invalidateQueries({ queryKey: ['conversations'] });
     queryClient.invalidateQueries({ queryKey: ['auth', 'me'] });
     if (invalidateFiles) queryClient.invalidateQueries({ queryKey: ['workspace', 'files'] });
@@ -116,8 +125,8 @@ export default function ChatPage() {
     stream.reset();
   }
 
-  const streamCallbacks: ConversationStreamCallbacks = {
-    onDone: () => finishTurn(true),
+  const makeStreamCallbacks = (turnConversationId: number): ConversationStreamCallbacks => ({
+    onDone: () => finishTurn(turnConversationId, true),
     onError: (message, code) => {
       // The failure is persisted server-side (status='failed' + error_reason)
       // and will render as a retry-able bubble once we refetch; surface the
@@ -128,10 +137,10 @@ export default function ChatPage() {
       // finished turn — let the auto-attach effect below try again after the
       // refetch if the server still reports `generating`.
       if (code === 'stream_error') autoAttachedForRef.current = null;
-      return finishTurn(false);
+      return finishTurn(turnConversationId, false);
     },
-    onIdle: () => finishTurn(false),
-  };
+    onIdle: () => finishTurn(turnConversationId, false),
+  });
 
   // Conversation switch: tear down OUR reader only — the other conversation's
   // turn (if any) keeps running server-side and can be reattached later.
@@ -177,13 +186,26 @@ export default function ChatPage() {
     const isGenerating = data.generating || (lastMsg?.role === 'assistant' && lastMsg.status === 'streaming');
     if (isGenerating) {
       autoAttachedForRef.current = conversationId;
-      stream.attach(conversationId, lastMsg?.role === 'assistant' ? lastMsg.id : null, streamCallbacks);
+      stream.attach(
+        conversationId,
+        lastMsg?.role === 'assistant' ? lastMsg.id : null,
+        makeStreamCallbacks(conversationId)
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId, conversationQuery.data]);
 
   const canonicalMessages = useMemo(() => conversationQuery.data?.messages ?? [], [conversationQuery.data]);
-  const displayMessages = optimisticUserMessage ? [...canonicalMessages, optimisticUserMessage] : canonicalMessages;
+  // Drop the optimistic copy as soon as the persisted user row is in the
+  // canonical list (e.g. the new conversation's first fetch lands after the
+  // send was accepted) — otherwise the question briefly renders twice.
+  const optimisticPersisted =
+    !!optimisticUserMessage &&
+    canonicalMessages.slice(optimisticUserMessage.baseCount).some((m) => m.role === 'user');
+  const displayMessages =
+    optimisticUserMessage && !optimisticPersisted
+      ? [...canonicalMessages, optimisticUserMessage.message]
+      : canonicalMessages;
 
   const isBusy = stream.state.assistantMessageId !== null;
   const quota5hBlocked = !!quota5hBlockedUntil && new Date(quota5hBlockedUntil).getTime() > Date.now();
@@ -200,6 +222,10 @@ export default function ChatPage() {
     if (!newChatModelKey) return null;
     const conv = await conversationsApi.create({ model_key: newChatModelKey });
     justCreatedIdRef.current = conv.id;
+    // We attach to this conversation's stream ourselves once the send is
+    // accepted; don't let the auto-attach effect race us with a second reader
+    // when the first fetch of the new conversation already says `generating`.
+    autoAttachedForRef.current = conv.id;
     queryClient.invalidateQueries({ queryKey: ['conversations'] });
     navigate(`/chat/${conv.id}`, { replace: true });
     return conv.id;
@@ -237,13 +263,18 @@ export default function ChatPage() {
     if (!id) return;
 
     const attachments = pendingAttachments;
+    // A conversation created just now has no cached messages yet.
+    const baseCount = id === conversationId ? canonicalMessages.length : 0;
     setOptimisticUserMessage({
-      id: -1,
-      role: 'user',
-      content,
-      created_at: new Date().toISOString(),
-      status: 'complete',
-      attachments,
+      baseCount,
+      message: {
+        id: -1,
+        role: 'user',
+        content,
+        created_at: new Date().toISOString(),
+        status: 'complete',
+        attachments,
+      },
     });
     // The ids travel with the send so the backend links the files to this
     // message and tells the model about them; chips clear optimistically and
@@ -256,7 +287,7 @@ export default function ChatPage() {
         thinking_level: selectedThinkingLevel,
         attachment_ids: attachments.map((a) => a.id),
       });
-      stream.attach(id, accepted.assistant_message_id, streamCallbacks);
+      stream.attach(id, accepted.assistant_message_id, makeStreamCallbacks(id));
     } catch (err) {
       setOptimisticUserMessage(null);
       setPendingAttachments(attachments);
@@ -279,7 +310,7 @@ export default function ChatPage() {
     setRetryPendingId(messageId);
     try {
       const accepted = await conversationsApi.retryMessage(conversationId, messageId);
-      stream.attach(conversationId, accepted.assistant_message_id, streamCallbacks);
+      stream.attach(conversationId, accepted.assistant_message_id, makeStreamCallbacks(conversationId));
     } catch (err) {
       if (err instanceof ApiError && err.code === 'chat_busy') {
         setSendError(t('chat.chatBusy'));
