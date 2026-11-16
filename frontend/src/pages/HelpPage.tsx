@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 
 import MarkdownMessage from '@/components/chat/MarkdownMessage';
 import { API_GUIDE_FA } from '@/content/apiGuide';
+import { applyBranding } from '@/branding';
 
 /**
  * In-panel user guide for the API/web-service usage. Content is bundled as a
@@ -22,7 +23,7 @@ export default function HelpPage() {
       </Typography>
       <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ '& pre': { overflowX: 'auto' }, '& table': { display: 'block', overflowX: 'auto' } }}>
-          <MarkdownMessage content={API_GUIDE_FA} />
+          <MarkdownMessage content={applyBranding(API_GUIDE_FA)} />
         </Box>
       </Paper>
     </Container>

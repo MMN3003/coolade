@@ -14,7 +14,7 @@
 set -u
 
 export HOME=/home/amin
-LOG=/home/amin/ai/EcoCode/scripts/refresh-claude-token.log
+LOG=/home/amin/ai/Coolade/scripts/refresh-claude-token.log
 TS="$(date -Is)"
 
 # ارزان‌ترین مدل، کوتاه‌ترین خروجی — فقط برای فعال‌کردن مسیر refresh.

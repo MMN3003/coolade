@@ -189,7 +189,7 @@ async def _handle_rpc(
             {
                 "protocolVersion": proto,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": f"ecocode-svc-{service.slug}", "version": "1.0"},
+                "serverInfo": {"name": f"coolade-svc-{service.slug}", "version": "1.0"},
             },
         )
     if method == "ping":
@@ -274,7 +274,7 @@ async def _handle_admin(db, request: Request, user_id: int):
 
     return await _handle_reserved(
         db, request, user_id,
-        server_name="ecocode-service-builder",
+        server_name="coolade-service-builder",
         tools=service_admin_tools.ADMIN_TOOLS,
         call=service_admin_tools.call_admin_tool,
         require_role=UserRole.admin,
@@ -286,7 +286,7 @@ async def _handle_me(db, request: Request, user_id: int):
 
     return await _handle_reserved(
         db, request, user_id,
-        server_name="ecocode-me",
+        server_name="coolade-me",
         tools=me_tools.ME_TOOLS,
         call=me_tools.call_me_tool,
         require_role=None,
@@ -346,7 +346,7 @@ async def _handle_reserved(db, request: Request, user_id: int, *, server_name, t
             except Exception as exc:
                 import logging
 
-                logging.getLogger("ecocode.mcp_gateway").exception(
+                logging.getLogger("coolade.mcp_gateway").exception(
                     "%s tool %s failed for user %s", server_name, tool, user_id
                 )
                 await db.rollback()

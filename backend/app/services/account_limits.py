@@ -29,7 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import Model, UpstreamAccountLimit
 
-logger = logging.getLogger("ecocode.upstream.account_limits")
+logger = logging.getLogger("coolade.upstream.account_limits")
 settings = get_settings()
 
 # Defensive: capture the whole `anthropic-ratelimit-*` family without assuming exact

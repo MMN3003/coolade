@@ -17,7 +17,7 @@ DISALLOWED_TOOLS="WebFetch,WebSearch"
 # by the backend only when configured — see sandbox_runner / TECH.md §6, git is
 # parametric and disabled until git.ecobin.ir repo + scoped token are provided).
 git config --global user.email "${GIT_AUTHOR_EMAIL:-assistant@ecobin.local}" || true
-git config --global user.name "${GIT_AUTHOR_NAME:-EcoCode Assistant}" || true
+git config --global user.name "${GIT_AUTHOR_NAME:-Coolade Assistant}" || true
 git config --global --add safe.directory /work || true
 
 exec claude -p "$PROMPT" \

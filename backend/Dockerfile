@@ -4,11 +4,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# Node 20 + Claude Code CLI, installed in-image (not host-mounted) so we control the
+# Node 22 + Claude Code CLI (current releases need node >=22; on Node 20 npm falls back to an old CLI), installed in-image (not host-mounted) so we control the
 # glibc/runtime version (TECH.md section 1 "CLI runner").
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates gnupg \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @anthropic-ai/claude-code \
     && apt-get purge -y gnupg \

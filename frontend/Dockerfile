@@ -1,4 +1,4 @@
-# EcoCode Gateway frontend — multi-stage build.
+# Coolade Gateway frontend — multi-stage build.
 # Stage 1: build the Vite/React/TS SPA with Node 20 (host dev machine may only
 # have Node 18; the build itself always happens inside this image, per TECH.md
 # §1: "بیلد داخل Docker (Node 18 host بی‌اهمیت)").

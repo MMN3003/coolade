@@ -2,9 +2,9 @@
 
 The general-chat CLI runs in-process with cwd = the user's workspace dir, so
 everything is PROJECT-scope there:
-  * skills   → <ws>/.claude/skills/eco-svc-<slug>/   (from /data/services/<slug>/<ver>/)
-  * builder  → <ws>/.claude/skills/eco-service-builder/  (admins only, shipped asset)
-  * mcp      → <ws>/.ecocode/mcp.json with a fresh short-lived turn key
+  * skills   → <ws>/.claude/skills/coolade-svc-<slug>/   (from /data/services/<slug>/<ver>/)
+  * builder  → <ws>/.claude/skills/coolade-service-builder/  (admins only, shipped asset)
+  * mcp      → <ws>/.coolade/mcp.json with a fresh short-lived turn key
                 (org_services.mint_turn_key), passed to the CLI via --mcp-config.
 
 amendment-7 (knowledge layer, docs/KNOWLEDGE.md):
@@ -14,10 +14,10 @@ amendment-7 (knowledge layer, docs/KNOWLEDGE.md):
     tools but no published skill gets a minimal generated SKILL.md when it has
     knowledge, so the knowledge is still discoverable.
   * every user gets the `_me` MCP server (personal memory tools: remember /
-    forget / list) — the eco-memory skill talks to it instead of hand-editing
+    forget / list) — the coolade-memory skill talks to it instead of hand-editing
     CLAUDE.md, so «یادت باشه» lands in the DB and shows up in «دانش من».
 
-A version marker (<ws>/.ecocode/services-state.json) makes the copy step a
+A version marker (<ws>/.coolade/services-state.json) makes the copy step a
 no-op when nothing changed (skill version AND knowledge fingerprint). Revocation
 never depends on this file — the gateway re-checks the grant on every call (ب-۳);
 stale synced skills are removed on the next turn anyway.
@@ -39,9 +39,9 @@ from app.services import org_services
 
 settings = get_settings()
 
-SKILL_PREFIX = "eco-svc-"
+SKILL_PREFIX = "coolade-svc-"
 BUILDER_SLUG = "_admin"
-BUILDER_SKILL_DIRNAME = "eco-service-builder"
+BUILDER_SKILL_DIRNAME = "coolade-service-builder"
 _ASSETS = Path(__file__).resolve().parent.parent / "assets" / "skills"
 BUILDER_ASSET = _ASSETS / BUILDER_SKILL_DIRNAME
 BUILDER_VERSION = 1  # bump when the shipped asset changes
@@ -49,7 +49,7 @@ BUILDER_VERSION = 1  # bump when the shipped asset changes
 # workspace root is natively auto-loaded by the CLI each turn — cross-chat memory
 # that makes starting a cheap new conversation painless).
 MEMORY_SLUG = "_memory"
-MEMORY_SKILL_DIRNAME = "eco-memory"
+MEMORY_SKILL_DIRNAME = "coolade-memory"
 MEMORY_ASSET = _ASSETS / MEMORY_SKILL_DIRNAME
 MEMORY_VERSION = 2  # v2: DB-backed via the `_me` MCP tools (amendment-7)
 # amendment-7: reserved per-user MCP server (personal memory tools), all users.
@@ -91,9 +91,9 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
     is_admin = user is not None and user.role == UserRole.admin
 
     def _sync_files() -> tuple[str | None, list[str]]:
-        eco_dir = ws / ".ecocode"
+        app_dir = ws / ".coolade"
         skills_root = ws / ".claude" / "skills"
-        state_path = eco_dir / "services-state.json"
+        state_path = app_dir / "services-state.json"
         # Skills to have on disk (slug -> state marker). _memory is skill-only for
         # everyone; _admin is skill+server for admins; services may be
         # server-only (version 0 = no published skill and no knowledge yet).
@@ -154,7 +154,7 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
                     knowledge_service.apply_addendum(base, addendum), encoding="utf-8"
                 )
 
-        eco_dir.mkdir(parents=True, exist_ok=True)
+        app_dir.mkdir(parents=True, exist_ok=True)
         state_path.write_text(json.dumps(desired_skills, ensure_ascii=False), encoding="utf-8")
 
         allowed = [f"mcp__{s}" for s in sorted(mcp_slugs)]
@@ -170,7 +170,7 @@ async def sync_service_access(user_id: int, ws: Path) -> tuple[str | None, list[
             }
             for slug in sorted(mcp_slugs)
         }
-        cfg_path = eco_dir / "mcp.json"
+        cfg_path = app_dir / "mcp.json"
         cfg_path.write_text(json.dumps({"mcpServers": servers}, ensure_ascii=False), encoding="utf-8")
         return str(cfg_path), allowed
 

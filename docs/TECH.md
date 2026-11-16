@@ -1,8 +1,8 @@
-# سند فنی (TECH) — گیت‌وی سازمانی EcoCode
+# سند فنی (TECH) — گیت‌وی سازمانی Coolade
 
 | | |
 |---|---|
-| **نام محصول** | EcoCode Gateway |
+| **نام محصول** | Coolade Gateway |
 | **نسخه سند** | 1.6 — اصلاحیهٔ ۶ پیاده‌سازی‌شده (حذف LiteLLM؛ یکسان‌سازی روی Claude Code CLI) |
 | **تاریخ** | 2026-08-24 |
 | **مدیر فنی** | Opus (Tech Lead) |
@@ -11,12 +11,12 @@
 
 > **اصلاحیهٔ ۶ (2026-08-24، درخواست کاربر — پیاده‌سازی‌شده):**
 > ۱) **حذف LiteLLM؛ یکسان‌سازی هر دو مسیر روی Claude Code CLI:** مسیر passthrough (`/v1/messages` و `/v1/chat/completions`) دیگر از LiteLLM عبور نمی‌کند؛ هر درخواست یک نوبت **تک‌شاتِ بدون‌حالتِ** Claude Code CLI است (`cli_runner.run_oneshot_turn` — بدون conversation/`--resume`/busy-lock؛ همزمانی با همان `_semaphore` سراسری). چون CLI هویت Claude Code را می‌فرستد، گیت توکن اشتراک OAuth ارضا و **۴۲۹ روی opus/sonnet در مسیر API رفع می‌شود** (علت ریشه‌ای تأییدشده: توکن اشتراک بدون بلوکِ هویت Claude Code فقط haiku را می‌پذیرد و opus/sonnet را با `rate_limit_error` رد می‌کند). قرارداد wire بیرونی تغییر نکرد (Anthropic/OpenAI، stream و non-stream). تاریخچهٔ چندنوبتیِ client به یک prompt تخت می‌شود؛ tool definitionهای client به CLI **پل نمی‌شوند** (محدودیت مستند §۵.۲). usage از رویداد `done` مستقیم در ledger با `surface=api` ثبت می‌شود (side-channel `/internal/usage-report` دیگر لازم نیست). fail-fast: خطای پیش از اولین delta به‌صورت status واقعی HTTP برمی‌گردد (parity با peekِ قبلی). مدل مستقیماً از `models.upstream_model` به `claude --model` می‌رود (نیاز به `model_map` منتفی).
-> ۲) **کلیدهای API:** دیگر virtual key در LiteLLM ساخته/حذف/به‌روزرسانی نمی‌شود؛ کلید EcoCode به‌تنهایی معتبر است (auth/ACL/quota کاملاً در بک‌اند). ستون `api_keys.litellm_key_id` به‌عنوان legacy بدون migration باقی می‌ماند.
+> ۲) **کلیدهای API:** دیگر virtual key در LiteLLM ساخته/حذف/به‌روزرسانی نمی‌شود؛ کلید Coolade به‌تنهایی معتبر است (auth/ACL/quota کاملاً در بک‌اند). ستون `api_keys.litellm_key_id` به‌عنوان legacy بدون migration باقی می‌ماند.
 > ۳) **compose و پاک‌سازی:** سرویس `litellm`، volume `litellm_data`، پوشهٔ `litellm/*`، و ماژول `app/services/litellm_client.py` حذف شدند. `health` دیگر litellm را probe نمی‌کند (فیلد legacy همیشه true). `LITELLM_MASTER_KEY` فقط به‌عنوان bearer داخلیِ `/internal/*` نگه داشته شد.
 > ۴) **لایهٔ کاهش توکن (اختیاری، پیش‌فرض خاموش):** سرویس opt-in `compression` (profile `compression`) در `./compression` — پروکسی معکوسِ استریمی بین CLI و آپ‌استریم؛ پیش‌فرض pass-throughِ امن (`COMPRESS=0`). نقطهٔ اتصال LLMLingua/tamp در `compression/proxy.py::_maybe_compress`. ⚠️ تغییر بدنهٔ درخواست پیشوندِ prompt-caching را می‌شکند؛ پیش از فعال‌سازی باید با ترافیک واقعی سنجیده شود. (نکته: **Graphify** درخواستیِ کاربر مخصوص ناوبری کدبیس بزرگ است و برای این کاربردِ دستیار سازمانی مناسب نبود؛ tamp/LLMLingua جایگزین شد.)
 > ۵) **استقرار:** فعال‌شدن نیازمند `docker compose up -d --build --remove-orphans backend` است (کانتینر `litellm` به‌عنوان orphan حذف می‌شود). تأیید انجام‌شده: اعتبارسنجی compose، کامپایل کل بک‌اند، بارگذاری کامل import graph، تست منطق passthrough (flatten/error-map/fail-fast peek)، و اجرای واقعیِ زیرفرایند CLI (mock) با ترجمهٔ رویداد و گزارش usage.
 > ۶) **ادیتور وب (VS Code-style) — مرحلهٔ ۱ (پیاده‌شده):** صفحهٔ `/workspace` با ادیتور **Monaco** (bundle محلی، بدون CDN) روی **همان workspace سندباکسِ موجود** کاربر: مرور درخت فایل، باز کردن، ویرایش، ذخیره. endpointهای جدید backend: `GET /api/workspace/files/{id}/content` (خواندن متن UTF-8؛ رد باینری؛ cap ۱MB) و `PUT /api/workspace/file` (ذخیره با همان realpath-containmentِ CLI — مسیر خارج از workspace رد می‌شود). **بدون شل**؛ اجرای دستور به مرحلهٔ ۲ موکول است. تأیید: `resolve_writable_path` (تست escape/containment) + build موفق فرانت (tsc + vite، Monaco به‌صورت chunk جدا lazy-load).
-> ۸) **VS Code واقعی (code-server) — جایگزین ادیتور Monaco (پیاده و verify‌شده):** به‌جای ادیتور تک‌فایلی، **code-server** (نسخهٔ متن‌باز VS Code) مستقر شد: explorer/ادیتور/ترمینال/git/extensions کامل. چون ترمینالش شل کامل است، **داخل همان envelope مرحلهٔ ۲** اجرا می‌شود: روی `ecocode_sandbox_net` (internal، بدون اینترنت مستقیم؛ فقط egress allowlist)، بدون mount کردن creds/DB، سقف mem/pids. nginx (وصل به هر دو شبکه) روی پورت اختصاصی `${CODE_SERVER_PORT:-8091}` به‌صورت root-path پروکسی می‌کند (websocket)، auth با `CODE_SERVER_PASSWORD`. mount: `users_data:/data/users`. profile `ide`. **تأیید:** لاگین‌پیج + assets از nginx، لود کامل workbench در مرورگر، و ایزوله‌سازی egress (example.com مسدود، open-vsx مجاز). **باقی‌مانده (مرحلهٔ بعد):** instanceهای per-user + gating با نشست EcoCode (الان تک‌instanceِ مشترک با یک پسورد است و همهٔ workspaceها زیر /data/users دیده می‌شوند)، embed در صفحهٔ اپ، و volume کانفیگ ماندگار.
+> ۸) **VS Code واقعی (code-server) — جایگزین ادیتور Monaco (پیاده و verify‌شده):** به‌جای ادیتور تک‌فایلی، **code-server** (نسخهٔ متن‌باز VS Code) مستقر شد: explorer/ادیتور/ترمینال/git/extensions کامل. چون ترمینالش شل کامل است، **داخل همان envelope مرحلهٔ ۲** اجرا می‌شود: روی `coolade_sandbox_net` (internal، بدون اینترنت مستقیم؛ فقط egress allowlist)، بدون mount کردن creds/DB، سقف mem/pids. nginx (وصل به هر دو شبکه) روی پورت اختصاصی `${CODE_SERVER_PORT:-8091}` به‌صورت root-path پروکسی می‌کند (websocket)، auth با `CODE_SERVER_PASSWORD`. mount: `users_data:/data/users`. profile `ide`. **تأیید:** لاگین‌پیج + assets از nginx، لود کامل workbench در مرورگر، و ایزوله‌سازی egress (example.com مسدود، open-vsx مجاز). **باقی‌مانده (مرحلهٔ بعد):** instanceهای per-user + gating با نشست Coolade (الان تک‌instanceِ مشترک با یک پسورد است و همهٔ workspaceها زیر /data/users دیده می‌شوند)، embed در صفحهٔ اپ، و volume کانفیگ ماندگار.
 > ۷) **اجرای دستور/گیت — مرحلهٔ ۲ (طراحی؛ بخشی بلاک روی آدرس ریپو):** «کد پیچیده + git push» نیازمند **سندباکس اجرایی ایزوله per-session** است (نه روشن‌کردن Bash داخل کانتینر backend که secret/DB/دادهٔ همهٔ کاربران را دارد — ریسک prompt-injection). تصمیم‌ها: کانتینر جدا per-session با **egress allowlist**، بدون mount اعتبارنامه/DB، سقف منابع/زمان؛ اعتبارنامهٔ git **scoped** فقط به ریپوهای مجاز. مقصد push: گیت‌لب سازمان روی `git.ecobin.ir` (آدرس دقیق ریپو بعداً). قدم پیاده‌سازی جداست چون تا آدرس/توکن نباشد، push قابل اتصال نیست.
 
 > **اصلاحیهٔ ۵ (2026-08-22، درخواست کاربر J — فقط طراحی):**
@@ -98,7 +98,7 @@
   │  Internet / اینترنت سازمان                                                     │
   │      │ 443 (TLS) / 80 (redirect→443)                                           │
   │      ▼                                                                         │
-  │  ┌─────────────┐   docker network: ecocode_net (bridge, internal)             │
+  │  ┌─────────────┐   docker network: coolade_net (bridge, internal)             │
   │  │   nginx     │  سرو SPA + reverse proxy                                      │
   │  └──────┬──────┘                                                               │
   │         │  /api/*  → backend:8000      /v1/* → backend:8000 (Cline/OpenAI)     │
@@ -117,7 +117,7 @@
   │         ▼              ▼        (مستقیم از CLI)      (سرویس Claude-سازگار)     │
   │  ┌──────────────────────────────────┐                                          │
   │  │        postgres :5432             │   ┌──────────────────────────┐          │
-  │  │  DBs: ecocode  +  litellm         │   │ mock-upstream :8080       │◀─ dev   │
+  │  │  DBs: coolade  +  litellm         │   │ mock-upstream :8080       │◀─ dev   │
   │  └──────────────────────────────────┘   │ (SSE canned) + mock-claude│  profile │
   │                                          └──────────────────────────┘          │
   └──────────────────────────────────────────────────────────────────────────────┘
@@ -127,7 +127,7 @@
 - **چت وب** → **CLI Runner** داخل backend: هر پیام یک اجرای headless از Claude Code CLI در پوشهٔ کاربر. CLI خودش مستقیم با `UPSTREAM_BASE_URL` حرف می‌زند (با اعتبارنامهٔ sync‌شده). LiteLLM در این مسیر نیست.
 - **کلید API (Cline/…)** → backend → **LiteLLM** → custom upstream handler → HTTP مستقیم `POST $UPSTREAM_BASE_URL/v1/messages`.
 
-**ماژول ایزولهٔ آپ‌استریم** دو نقطهٔ تماس دارد: (الف) `backend/app/upstream/credentials.py` — مالک کامل چرخهٔ عمر اعتبارنامه (seed از هاست، refresh خودکار، persist سه‌جایه — §۴.۱)، (ب) `litellm/ecocode_upstream_handler.py` — custom handler داخل کانتینر litellm که عمداً یک **relay گنگ** است: نه DB دارد، نه crypto، نه دسترسی به فایل اعتبارنامه؛ پیکربندی مؤثر (mode، base_url، توکن plaintext، `model_map`) را از endpoint داخلی backend یعنی `GET /internal/upstream-config` می‌گیرد (bearer = `LITELLM_MASTER_KEY`، فقط شبکهٔ داخلی، cache ۱۵ثانیه‌ای) و usage واقعی را به `POST /internal/usage-report` برمی‌گرداند (§۶.۱). تغییر مکانیزم سرویس آپ‌استریم فقط این دو فایل را لمس می‌کند.
+**ماژول ایزولهٔ آپ‌استریم** دو نقطهٔ تماس دارد: (الف) `backend/app/upstream/credentials.py` — مالک کامل چرخهٔ عمر اعتبارنامه (seed از هاست، refresh خودکار، persist سه‌جایه — §۴.۱)، (ب) `litellm/coolade_upstream_handler.py` — custom handler داخل کانتینر litellm که عمداً یک **relay گنگ** است: نه DB دارد، نه crypto، نه دسترسی به فایل اعتبارنامه؛ پیکربندی مؤثر (mode، base_url، توکن plaintext، `model_map`) را از endpoint داخلی backend یعنی `GET /internal/upstream-config` می‌گیرد (bearer = `LITELLM_MASTER_KEY`، فقط شبکهٔ داخلی، cache ۱۵ثانیه‌ای) و usage واقعی را به `POST /internal/usage-report` برمی‌گرداند (§۶.۱). تغییر مکانیزم سرویس آپ‌استریم فقط این دو فایل را لمس می‌کند.
 
 ### ۲.۲ سرویس‌های docker-compose
 
@@ -136,7 +136,7 @@
 | `nginx` | `nginx:1.27-alpine` (build stage برای SPA) | TLS، static، reverse proxy | `443`, `80` | 80 | default |
 | `backend` | build از `./backend` (python:3.12-slim + **Node 20 + `@anthropic-ai/claude-code`**) | FastAPI، auth، ledger، quota، **CLI runner**، workspace | — | `8000` | default |
 | `litellm` | `ghcr.io/berriai/litellm:main-stable` | gateway engine مسیر passthrough + custom upstream handler | — | `4000` | default |
-| `postgres` | `postgres:16-alpine` | دو دیتابیس: `ecocode`، `litellm` | — | `5432` | default |
+| `postgres` | `postgres:16-alpine` | دو دیتابیس: `coolade`، `litellm` | — | `5432` | default |
 | `mock-upstream` | build از `./mock-upstream` (python:3.12-slim, FastAPI) | استاب SSE بدون credential (مسیر passthrough) | — | `8080` | `dev` |
 
 **volumeها و mountهای backend:**
@@ -154,7 +154,7 @@ backend:
 اسکریپت `mock-claude` (استاب CLI برای mode mock — بخش ۵.۶) داخل image بک‌اند در `/app/bin/mock-claude` قرار دارد؛ کانتینر جداگانه لازم ندارد.
 
 **قواعد شبکه:**
-- فقط `nginx` روی host expose می‌شود. بقیه در شبکهٔ داخلی `ecocode_net` و **بدون** `ports:` (فقط `expose:`).
+- فقط `nginx` روی host expose می‌شود. بقیه در شبکهٔ داخلی `coolade_net` و **بدون** `ports:` (فقط `expose:`).
 - TLS: در فاز اول self-signed یا cert سازمانی داخل `nginx` (mount از `./certs`). چون همه‌چیز پشت nginx است، TLS در لبه کافی است.
 
 ### ۲.۳ پلن پورت (قطعی)
@@ -164,7 +164,7 @@ backend:
 | کاربر/Cline | nginx | 443 | تنها نقطهٔ ورود |
 | nginx | backend | 8000 | `/api`, `/v1` |
 | backend | litellm | 4000 | مسیر passthrough + admin API (`/key/generate` و…) |
-| backend | postgres | 5432 | DB `ecocode` |
+| backend | postgres | 5432 | DB `coolade` |
 | litellm | postgres | 5432 | DB `litellm` (جدا) |
 | litellm | mock-upstream | 8080 | فقط mode mock |
 | litellm→handler / CLI | `$UPSTREAM_BASE_URL` | 443 | از طریق `HTTPS_PROXY` env اگر ست شده |
@@ -173,7 +173,7 @@ backend:
 
 ```dotenv
 # --- عمومی ---
-ECOCODE_ENV=prod                      # prod | dev
+COOLADE_ENV=prod                      # prod | dev
 UPSTREAM_MODE=mock                    # mock | cli_creds | apikey   (پیش‌فرض dev/تأیید = mock؛ prod = cli_creds)
 UPSTREAM_BASE_URL=https://claude-compat.example.com   # آدرس سرویس Claude-سازگار — هرگز hardcode نمی‌شود
 # --- OAuth refresh (Issue B، §4.1) ---
@@ -192,12 +192,12 @@ UPSTREAM_LIMIT_PROBE_ENABLED=false    # probe دوره‌ای سبک برای ت
 UPSTREAM_LIMIT_PROBE_INTERVAL=900     # ثانیه؛ فقط اگر probe فعال باشد
 
 # --- رمزنگاری ---
-ECOCODE_SECRET_KEY=<32-byte base64>   # کلید Fernet برای رمز کردن کلید apikey آپ‌استریم
+COOLADE_SECRET_KEY=<32-byte base64>   # کلید Fernet برای رمز کردن کلید apikey آپ‌استریم
 SESSION_SECRET=<random 64 hex>        # امضای کوکی session
 
 # --- دیتابیس ---
 POSTGRES_PASSWORD=<...>
-ECOCODE_DATABASE_URL=postgresql+asyncpg://ecocode:***@postgres:5432/ecocode
+COOLADE_DATABASE_URL=postgresql+asyncpg://coolade:***@postgres:5432/coolade
 LITELLM_DATABASE_URL=postgresql://litellm:***@postgres:5432/litellm
 
 # --- LiteLLM ---
@@ -222,7 +222,7 @@ LDAP_BIND_TEMPLATE=uid={username},ou=people,dc=corp,dc=local
 
 ## ۳. اسکیمای دیتابیس (SQL DDL)
 
-دیتابیس `ecocode` (منبع authoritative ما). دیتابیس `litellm` جداست و کاملاً مدیریت‌شده توسط خود LiteLLM (به آن دست نمی‌زنیم).
+دیتابیس `coolade` (منبع authoritative ما). دیتابیس `litellm` جداست و کاملاً مدیریت‌شده توسط خود LiteLLM (به آن دست نمی‌زنیم).
 
 ```sql
 -- ============ ENUMs ============
@@ -285,7 +285,7 @@ CREATE TABLE api_keys (
     id                  BIGSERIAL PRIMARY KEY,
     user_id             BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     name                VARCHAR(255) NOT NULL,          -- مثلا «Cline لپ‌تاپ»
-    key_prefix          VARCHAR(16)  NOT NULL,          -- مثلا "eco_live_a1b2" برای نمایش
+    key_prefix          VARCHAR(16)  NOT NULL,          -- مثلا "coolade_live_a1b2" برای نمایش
     key_hash            TEXT NOT NULL,                  -- sha256(full_key) hex
     litellm_key_id      TEXT,                           -- شناسه/توکن virtual key در LiteLLM
     is_active           BOOLEAN NOT NULL DEFAULT TRUE,
@@ -441,7 +441,7 @@ CREATE INDEX idx_audit_action ON audit_log(action, created_at DESC);
 
 -- ============ settings ============
 -- key-value برای تنظیمات سراسری + کلید رمزشدهٔ آپ‌استریم (mode apikey).
--- مقادیر حساس با Fernet (ECOCODE_SECRET_KEY) رمز می‌شوند؛ ستون is_encrypted نشانه‌گذاری می‌کند.
+-- مقادیر حساس با Fernet (COOLADE_SECRET_KEY) رمز می‌شوند؛ ستون is_encrypted نشانه‌گذاری می‌کند.
 CREATE TABLE settings (
     key             VARCHAR(120) PRIMARY KEY,
     value           TEXT,               -- اگر is_encrypted: ciphertext base64
@@ -663,10 +663,10 @@ Browser ──▶ GET /api/conversations/{id}/stream        (SSE)
 
 ### ۵.۲ سطح (ب) — کلید API شخصی از Cline/ابزار OpenAI-سازگار (HTTP مستقیم)
 
-Cline/aider/… مستقیم به `/v1/messages` (Anthropic-شکل) یا `/v1/chat/completions` (OpenAI-شکل) روی همان دامنه می‌زنند، با هدر `x-api-key: eco_live_…` یا `Authorization: Bearer eco_live_…`.
+Cline/aider/… مستقیم به `/v1/messages` (Anthropic-شکل) یا `/v1/chat/completions` (OpenAI-شکل) روی همان دامنه می‌زنند، با هدر `x-api-key: coolade_live_…` یا `Authorization: Bearer coolade_live_…`.
 
 ```
-Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/completions  (POST)
+Cline ──(Bearer coolade_live_...)──▶ nginx /v1/messages  یا  /v1/chat/completions  (POST)
    ▼ backend (passthrough endpoint)
  [۱ AUTH]   کلید از هدر → sha256 → lookup در api_keys (key_hash). نبود/غیرفعال/کاربر غیرفعال
             → 401. last_used_at به‌روز.
@@ -678,7 +678,7 @@ Cline ──(Bearer eco_live_...)──▶ nginx /v1/messages  یا  /v1/chat/co
             اگر endpoint = /v1/chat/completions، LiteLLM خودش شکل OpenAI را ترجمه می‌کند.
             metadata: {user_id, api_key_id, model_key, surface:api}.
  [۵ STREAM] SSE از آپ‌استریم تا Cline پیوسته proxy می‌شود (هر دو فرمت stream پشتیبانی می‌شوند).
- [۶ ثبت مصرف]  usage واقعی از side-channel داخلی (§۶.۱) با کلید x-ecocode-request-id؛
+ [۶ ثبت مصرف]  usage واقعی از side-channel داخلی (§۶.۱) با کلید x-coolade-request-id؛
             fallback: بلوک usage خود litellm. همان فرمول؛ api_key_id پر.
             (چت وب و API از یک سهمیهٔ کاربر کم می‌شوند — F5.3.)
  [۷ لیمیت اکانت]  (اصلاحیهٔ ۳ / Issue F) handler هدرهای anthropic-ratelimit-* پاسخ آپ‌استریم را
@@ -829,19 +829,19 @@ model_list:
   # هر مدل گیت‌وی به custom provider = upstream handler وصل می‌شود.
   - model_name: claude-opus          # نامی که backend/Cline صدا می‌زند
     litellm_params:
-      model: ecocode-upstream/claude-opus        # نگاشت به models.upstream_model در handler
+      model: coolade-upstream/claude-opus        # نگاشت به models.upstream_model در handler
   - model_name: claude-sonnet
     litellm_params:
-      model: ecocode-upstream/claude-sonnet
+      model: coolade-upstream/claude-sonnet
   - model_name: claude-haiku
     litellm_params:
-      model: ecocode-upstream/claude-haiku
+      model: coolade-upstream/claude-haiku
 
 litellm_settings:
   # custom handler = relay گنگ (بخش ۲.۱)؛ پیکربندی مؤثر را از backend می‌گیرد.
   custom_provider_map:
-    - provider: "ecocode-upstream"
-      custom_handler: ecocode_upstream_handler.adapter   # فایل mount‌شده (ro) در کانتینر
+    - provider: "coolade-upstream"
+      custom_handler: coolade_upstream_handler.adapter   # فایل mount‌شده (ro) در کانتینر
   drop_params: true
 
 general_settings:
@@ -854,7 +854,7 @@ general_settings:
 1. `GET backend:/internal/upstream-config` (bearer = `LITELLM_MASTER_KEY`؛ فقط شبکهٔ داخلی، هرگز پشت nginx expose نمی‌شود) → `{mode, base_url, api_key, auth_header, oauth_beta, model_map}`. backend اینجا env/settings/TokenManager را resolve می‌کند؛ در دسترس‌نبودن لحظه‌ای backend → fallback امن به mock بدون credential.
 2. **اعمال `model_map` (پیاده‌شده):** نگاشت `model_key` داخلی → `upstream_model` (مثلاً `claude-sonnet` → `claude-sonnet-5`) قبل از relay اعمال می‌شود؛ بدون آن کلید داخلی به سرویس واقعی نشت می‌کرد و 404 می‌گرفت.
 3. relay به `POST {base_url}/v1/messages` با شکل اصیل Messages API (هدرها طبق §۴.۴).
-4. **گزارش usage واقعی (پیاده‌شده):** usage کامل پاسخ آپ‌استریم (شامل cache_read/cache_write که schema چانک‌های streaming litellm حملش نمی‌کند) به `POST backend:/internal/usage-report` با کلید `x-ecocode-request-id` برمی‌گردد؛ backend همین را در ledger می‌نویسد (fallback: usage خود litellm). → usage_ledger مستقل از حسابداری litellm، authoritative می‌ماند.
+4. **گزارش usage واقعی (پیاده‌شده):** usage کامل پاسخ آپ‌استریم (شامل cache_read/cache_write که schema چانک‌های streaming litellm حملش نمی‌کند) به `POST backend:/internal/usage-report` با کلید `x-coolade-request-id` برمی‌گردد؛ backend همین را در ledger می‌نویسد (fallback: usage خود litellm). → usage_ledger مستقل از حسابداری litellm، authoritative می‌ماند.
 5. **خطاها:** non-2xx آپ‌استریم به exception تایپ‌دار litellm با status واقعی re-raise می‌شود (جدول §۵.۲).
 6. **(اصلاحیهٔ ۳ / Issue F):** همهٔ response headerهای با پیشوند `anthropic-ratelimit` را خام برمی‌دارد و به `POST /internal/upstream-limits` می‌فرستد (fire-and-forget، شکستش درخواست را نمی‌شکند)؛ parse و upsert در backend (§۴.۵). handler همچنان relay گنگ می‌ماند — نام هدرها را فرض نمی‌کند.
 
@@ -864,14 +864,14 @@ general_settings:
 
 backend با `LITELLM_MASTER_KEY` مدیریت می‌کند:
 
-| رخداد در EcoCode | فراخوانی LiteLLM |
+| رخداد در Coolade | فراخوانی LiteLLM |
 |---|---|
-| ساخت کلید API کاربر (F5.1) | `POST /key/generate` با `{ models: [مدل‌های مجاز کاربر], metadata: {ecocode_user_id, ecocode_key_id}, max_budget: <بزرگ، کمربند ایمنی> }` → `key` برمی‌گردد؛ در `api_keys.litellm_key_id` ذخیره. |
+| ساخت کلید API کاربر (F5.1) | `POST /key/generate` با `{ models: [مدل‌های مجاز کاربر], metadata: {coolade_user_id, coolade_key_id}, max_budget: <بزرگ، کمربند ایمنی> }` → `key` برمی‌گردد؛ در `api_keys.litellm_key_id` ذخیره. |
 | ابطال کلید (F5.2) | `POST /key/delete` با آن key. |
 | غیرفعال‌سازی کاربر (F2.2) | حلقه روی همهٔ کلیدهای کاربر → `POST /key/delete`. |
 | تغییر مدل‌های مجاز (F3.1) | `POST /key/update` روی همهٔ کلیدهای کاربر با `models` جدید. |
 
-> نکته: چون auth/ACL/quota را ما در backend انجام می‌دهیم، virtual key در LiteLLM عمدتاً برای **جداسازی و شمارش** است. حتی اگر کسی کلید LiteLLM را بدزدد، به backend ما دسترسی ندارد چون Cline از طریق کلید ما (`eco_live_…`) می‌آید نه کلید LiteLLM.
+> نکته: چون auth/ACL/quota را ما در backend انجام می‌دهیم، virtual key در LiteLLM عمدتاً برای **جداسازی و شمارش** است. حتی اگر کسی کلید LiteLLM را بدزدد، به backend ما دسترسی ندارد چون Cline از طریق کلید ما (`coolade_live_…`) می‌آید نه کلید LiteLLM.
 
 ### ۶.۳ آنچه عمداً به LiteLLM نمی‌سپاریم — و چرا
 
@@ -919,11 +919,11 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 
 ```
 فرمت نمایش‌شده به کاربر (فقط یک‌بار، هنگام ساخت):
-    eco_live_<32 char base62 تصادفی>
+    coolade_live_<32 char base62 تصادفی>
       └ prefix ثابت    └ راز
 
 ذخیره:
-    key_prefix = "eco_live_" + اولین ۴ کاراکتر راز   → برای نمایش در لیست
+    key_prefix = "coolade_live_" + اولین ۴ کاراکتر راز   → برای نمایش در لیست
     key_hash   = sha256(کل کلید).hex()               → تنها چیز ذخیره‌شده از راز
 ```
 - متن کامل هرگز ذخیره نمی‌شود (F5.2). lookup در auth: `sha256(هدر ورودی)` → `WHERE key_hash=`.
@@ -937,7 +937,7 @@ LiteLLM budget را با یک سقف **بزرگ** (مثلاً ۲× سهمیهٔ 
 
 ---
 
-## ۸. قرارداد API بک‌اند EcoCode (REST)
+## ۸. قرارداد API بک‌اند Coolade (REST)
 
 پایه: `/api`. همه JSON مگر endpointهای stream (SSE)، آپلود (multipart) و دانلود فایل. این جدول **قرارداد بین Dev1 و Dev2** است؛ Dev2 فقط علیه این می‌سازد. Dev1 موظف است `openapi.json` را از FastAPI export و در repo نگه دارد.
 
@@ -1153,7 +1153,7 @@ repo/
 - [ ] پیام دوم در همان گفتگو با `--resume` اجرا می‌شود (mock همان session id را echo می‌کند).
 - [ ] پنل «فایل‌های من»: فایل ساخته‌شدهٔ mock-claude در لیست است و دانلود می‌شود؛ کاربر دوم آن را **نمی‌بیند**.
 - [ ] تست traversal: `file_id` جعلی با `../` → 404.
-- [ ] ساخت کلید API → `curl /v1/messages` با `eco_live_…` استریم می‌دهد → از همان سهمیه کم شد.
+- [ ] ساخت کلید API → `curl /v1/messages` با `coolade_live_…` استریم می‌دهد → از همان سهمیه کم شد.
 - [ ] `curl /v1/chat/completions` (شکل OpenAI) هم کار می‌کند.
 - [ ] رسیدن به سقف سهمیه → 429 با پیام فارسی + ردیف `request.denied_quota` در audit (هر دو سطح).
 - [ ] مدل غیرمجاز → 403؛ پیام هم‌زمان در یک گفتگو → 409 `chat_busy`.
@@ -1188,7 +1188,7 @@ repo/
 
 **Dev1 — backend (به این ترتیب):**
 1. **E:** migration `quotas.limit_credits_5h` (nullable)؛ بازنویسی `services/quota.py`: `check_quota` هر دو سقف را چک کند، تابع `get_used_5h(window)` و محاسبهٔ `reset_5h_at` (min(created_at) داخل پنجره + window)؛ خطای جدید `quota_exceeded_5h` در `errors.py` با `reset_5h_at` در بدنه؛ audit `request.denied_quota_5h`؛ env `ROLLING_WINDOW_HOURS`؛ گسترش `/api/usage/me` و `PUT quota` با فیلدهای ۵ساعته. **بدون** تغییر `run_periodic_reset` (پنجرهٔ غلتان reset ندارد).
-2. **F:** جدول `upstream_account_limits` (migration)؛ endpoint داخلی `POST /internal/upstream-limits` (parse خانوادهٔ `anthropic-ratelimit-*` → window/limit/remaining/reset، upsert)؛ افزودن capture هدر در `ecocode_upstream_handler.py` (fire-and-forget)؛ endpoint `GET /api/admin/upstream/account-limits` (+ محاسبهٔ `stale` از `last_updated`، fallback به tier/subscription از credentials)؛ probe اختیاری پشت env (پیش‌فرض خاموش).
+2. **F:** جدول `upstream_account_limits` (migration)؛ endpoint داخلی `POST /internal/upstream-limits` (parse خانوادهٔ `anthropic-ratelimit-*` → window/limit/remaining/reset، upsert)؛ افزودن capture هدر در `coolade_upstream_handler.py` (fire-and-forget)؛ endpoint `GET /api/admin/upstream/account-limits` (+ محاسبهٔ `stale` از `last_updated`، fallback به tier/subscription از credentials)؛ probe اختیاری پشت env (پیش‌فرض خاموش).
 3. **G:** endpoint `GET /api/admin/users/{id}/usage` (بازاستفاده از منطق `admin_usage.py` با فیلتر `user_id` + بلوک‌های ۵ساعته/هفتگی از quota service) + CSV تک‌کاربر (فیلتر همان query موجود).
 4. regenerate `docs/openapi.json` و اطلاع به Dev2.
 
@@ -1216,7 +1216,7 @@ repo/
 ## ۱۱. امنیت + برنامهٔ تست/تأیید
 
 ### ۱۱.۱ نکات امنیتی (الزامی)
-- **اعتبارنامهٔ آپ‌استریم:** mode cli_creds: mount فقط‌خواندنی + کپی فقط داخل HOME کانتینر؛ هرگز در DB/لاگ/مرورگر. mode apikey: **Fernet** (کلید از `ECOCODE_SECRET_KEY` در env) در `settings`. کلید env در secrets سرور، نه در repo.
+- **اعتبارنامهٔ آپ‌استریم:** mode cli_creds: mount فقط‌خواندنی + کپی فقط داخل HOME کانتینر؛ هرگز در DB/لاگ/مرورگر. mode apikey: **Fernet** (کلید از `COOLADE_SECRET_KEY` در env) در `settings`. کلید env در secrets سرور، نه در repo.
 - **کلید API کاربر:** فقط `sha256` ذخیره؛ متن کامل یک‌بار نمایش. `.env` و `certs/` در `.gitignore`.
 - **confinement مسیر CLI:** بدون `--dangerously-skip-permissions`؛ allowlist ابزار فقط-فایل با الگوی `./**`؛ `Bash/WebFetch/WebSearch` ممنوع (توجیه در ۵.۴)؛ env پروسه لیست سفید (هیچ secret backend به CLI نمی‌رسد). **(اصلاحیهٔ ۴)** مجموعهٔ مجاز = workspace کاربر ∪ دایرکتوری تیم‌های عضو؛ symlink تیم فقط برای عضو ساخته می‌شود و هر resolve فایل realpath-چک‌شده در همین اجتماع است.
 - **مرز دسترسی تیم (اصلاحیهٔ ۴ / Issue I):** عضویت در `team_members` **تنها** مرز دسترسی به حافظهٔ تیم است — هم در سشن CLI (symlink فقط برای عضو) و هم در endpointهای `/api/teams/{id}/memory/*` (گارد عضویت، 404 برای غیرعضو تا وجود تیم فاش نشود). کاربر هرگز به دایرکتوری تیمی که عضوش نیست نمی‌رسد؛ تغییر عضویت در نوبت بعد اعمال می‌شود. `file_id` تیمی opaque و containment زیر `/data/teams/<id>/memory`. ادمین استثناست (مدیریت هر تیم).
@@ -1251,13 +1251,13 @@ curl -k -N -b cj https://localhost/api/conversations/1/messages \
 # فایل ساخته‌شده:
 curl -k -b cj https://localhost/api/workspace/files   # لیست شامل فایل mock
 # لاگین کاربر، ساخت کلید:
-curl -k -b cj https://localhost/api/keys -d '{"name":"test"}'   # → eco_live_...
+curl -k -b cj https://localhost/api/keys -d '{"name":"test"}'   # → coolade_live_...
 # تست passthrough Anthropic-شکل:
-curl -k https://localhost/v1/messages -H "x-api-key: eco_live_..." \
+curl -k https://localhost/v1/messages -H "x-api-key: coolade_live_..." \
      -d '{"model":"claude-sonnet","max_tokens":64,"stream":true,
           "messages":[{"role":"user","content":"سلام"}]}'   # SSE قوطی‌شده از mock-upstream
 # تست OpenAI-سازگار:
-curl -k https://localhost/v1/chat/completions -H "Authorization: Bearer eco_live_..." \
+curl -k https://localhost/v1/chat/completions -H "Authorization: Bearer coolade_live_..." \
      -d '{"model":"claude-sonnet","stream":true,"messages":[{"role":"user","content":"hi"}]}'
 # بررسی ثبت مصرف (هر دو سطح):
 curl -k -b cj https://localhost/api/usage/me      # credits افزایش یافت

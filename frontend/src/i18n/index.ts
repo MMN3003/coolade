@@ -17,7 +17,8 @@ void i18n.use(initReactI18next).init({
   },
   lng: 'fa',
   fallbackLng: 'fa',
-  interpolation: { escapeValue: false },
+  // appName/keyPrefix are filled from /api/branding at startup (src/branding.ts).
+  interpolation: { escapeValue: false, defaultVariables: { appName: 'Coolade', keyPrefix: 'coolade_live_' } },
   returnNull: false,
 });
 

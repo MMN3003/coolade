@@ -5,13 +5,13 @@ volume). The read DSN is taken from the ORASH_DSN env var so no secret is ever
 committed to the repo or typed on a shared command line:
 
     # 1) copy this script + SKILL.md into the container
-    docker cp scripts/orash-service/provision.py ecocode-backend-1:/app/provision_orash.py
-    docker cp scripts/orash-service/SKILL.md      ecocode-backend-1:/tmp/orash_SKILL.md
+    docker cp scripts/orash-service/provision.py coolade-backend-1:/app/provision_orash.py
+    docker cp scripts/orash-service/SKILL.md      coolade-backend-1:/tmp/orash_SKILL.md
 
     # 2) run it, passing the DSN via env (replace the password)
     docker exec -e ORASH_DSN='mssql://sa:PASSWORD@192.168.5.2:53012/Orash1' \
         -e ORASH_SKILL=/tmp/orash_SKILL.md \
-        ecocode-backend-1 python /app/provision_orash.py
+        coolade-backend-1 python /app/provision_orash.py
 
 Re-running is safe: it updates the existing service and republishes the skill.
 Prefer a dedicated SELECT-only SQL login over `sa` for the DSN (see the report).

@@ -1,15 +1,15 @@
-// راهنمای کاربری استفاده از وب‌سرویس EcoCode.
+// راهنمای کاربری استفاده از وب‌سرویس. {{appName}} و {{keyPrefix}} هنگام نمایش از branding جایگزین می‌شوند.
 // همگام با docs/API-GUIDE.md نگه داشته شود.
 // آدرس پایه با placeholder «SERVER» نوشته شده تا کاربر با آدرس واقعی سرور خودش جایگزین کند.
 
 export const API_GUIDE_FA = `
 ## استفاده از وب‌سرویس با کلید API
 
-با کلید API شخصی خود می‌توانید از EcoCode در ابزارهای برنامه‌نویسی (Cline، Continue، aider و…) یا اسکریپت‌های خودتان استفاده کنید. آدرس پایه، همین آدرسی است که این صفحه را با آن باز کرده‌اید (در نمونه‌ها به‌جای \`SERVER:8085\` از آن استفاده کنید).
+با کلید API شخصی خود می‌توانید از {{appName}} در ابزارهای برنامه‌نویسی (Cline، Continue، aider و…) یا اسکریپت‌های خودتان استفاده کنید. آدرس پایه، همین آدرسی است که این صفحه را با آن باز کرده‌اید (در نمونه‌ها به‌جای \`SERVER:8085\` از آن استفاده کنید).
 
 ### ۱. ساخت کلید API
 ۱. از منو وارد **«کلیدهای API»** شوید و **«ساخت کلید جدید»** را بزنید و یک نام بدهید (مثلاً «Cline لپ‌تاپ»).
-۲. کلید (\`eco_live_…\`) **فقط همان یک‌بار** نمایش داده می‌شود — همان لحظه کپی و در جای امن ذخیره کنید.
+۲. کلید (\`{{keyPrefix}}…\`) **فقط همان یک‌بار** نمایش داده می‌شود — همان لحظه کپی و در جای امن ذخیره کنید.
 
 نکته‌ها:
 - می‌توانید چند کلید با نام‌های مختلف بسازید و هرکدام را جداگانه باطل کنید.
@@ -25,8 +25,8 @@ export const API_GUIDE_FA = `
 | \`GET /v1/models\` | OpenAI-style | لیست مدل‌های مجاز شما |
 
 احراز هویت با هر دو شکل پذیرفته می‌شود:
-- هدر \`x-api-key: eco_live_…\` (سبک Anthropic)
-- هدر \`Authorization: Bearer eco_live_…\` (سبک OpenAI)
+- هدر \`x-api-key: {{keyPrefix}}…\` (سبک Anthropic)
+- هدر \`Authorization: Bearer {{keyPrefix}}…\` (سبک OpenAI)
 
 استریم (SSE) با \`"stream": true\` در هر دو endpoint پشتیبانی می‌شود.
 
@@ -35,7 +35,7 @@ export const API_GUIDE_FA = `
 **curl — سبک Anthropic**
 \`\`\`bash
 curl -X POST http://SERVER:8085/v1/messages \\
-  -H "x-api-key: eco_live_XXXX" \\
+  -H "x-api-key: {{keyPrefix}}XXXX" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "claude-sonnet",
@@ -47,7 +47,7 @@ curl -X POST http://SERVER:8085/v1/messages \\
 **curl — سبک OpenAI (با استریم)**
 \`\`\`bash
 curl -N -X POST http://SERVER:8085/v1/chat/completions \\
-  -H "Authorization: Bearer eco_live_XXXX" \\
+  -H "Authorization: Bearer {{keyPrefix}}XXXX" \\
   -H "Content-Type: application/json" \\
   -d '{
     "model": "claude-haiku",
@@ -60,7 +60,7 @@ curl -N -X POST http://SERVER:8085/v1/chat/completions \\
 \`\`\`python
 from anthropic import Anthropic
 
-client = Anthropic(base_url="http://SERVER:8085", api_key="eco_live_XXXX")
+client = Anthropic(base_url="http://SERVER:8085", api_key="{{keyPrefix}}XXXX")
 msg = client.messages.create(
     model="claude-sonnet",
     max_tokens=1024,
@@ -73,7 +73,7 @@ print(msg.content[0].text)
 \`\`\`python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://SERVER:8085/v1", api_key="eco_live_XXXX")
+client = OpenAI(base_url="http://SERVER:8085/v1", api_key="{{keyPrefix}}XXXX")
 resp = client.chat.completions.create(
     model="claude-haiku",
     messages=[{"role": "user", "content": "سلام!"}],
@@ -86,7 +86,7 @@ print(resp.choices[0].message.content)
 **Cline (VS Code)** — روش پیشنهادی:
 - API Provider: **Anthropic**
 - Anthropic Base URL: \`http://SERVER:8085\`
-- API Key: \`eco_live_XXXX\`
+- API Key: \`{{keyPrefix}}XXXX\`
 - Model: \`claude-sonnet\` (یا هر مدل مجاز شما)
 
 روش جایگزین — **OpenAI Compatible**:
@@ -97,10 +97,10 @@ print(resp.choices[0].message.content)
 \`\`\`json
 {
   "models": [{
-    "title": "EcoCode Sonnet",
+    "title": "{{appName}} Sonnet",
     "provider": "anthropic",
     "apiBase": "http://SERVER:8085",
-    "apiKey": "eco_live_XXXX",
+    "apiKey": "{{keyPrefix}}XXXX",
     "model": "claude-sonnet"
   }]
 }
@@ -108,7 +108,7 @@ print(resp.choices[0].message.content)
 
 **aider**:
 \`\`\`bash
-export ANTHROPIC_API_KEY=eco_live_XXXX
+export ANTHROPIC_API_KEY={{keyPrefix}}XXXX
 export ANTHROPIC_BASE_URL=http://SERVER:8085
 aider --model claude-sonnet
 \`\`\`

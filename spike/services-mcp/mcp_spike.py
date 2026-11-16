@@ -1,7 +1,7 @@
 """SPK-SV1 (docs/SERVICES-V2.md ب-۱۰) — minimal streamable-HTTP MCP server.
 
 Question under test: does the real `claude` client inside a workspace container
-(ecows_*) speak MCP over plain HTTP to a backend-side gateway, with the
+(coolws_*) speak MCP over plain HTTP to a backend-side gateway, with the
 workspace gateway key as Authorization, and complete a full agentic
 tools/list -> tools/call round-trip in a headless turn?
 
@@ -77,7 +77,7 @@ def _handle_rpc(msg: dict) -> dict | None:
             "result": {
                 "protocolVersion": proto,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": f"ecocode-svc-{SLUG}-spike", "version": "0.1"},
+                "serverInfo": {"name": f"coolade-svc-{SLUG}-spike", "version": "0.1"},
             },
         }
     if method == "tools/list":

@@ -54,7 +54,7 @@ from app.models import (
     UserRole,
 )
 
-logger = logging.getLogger("ecocode.learning")
+logger = logging.getLogger("coolade.learning")
 settings = get_settings()
 
 SETTING_ENABLED = "learning.enabled"

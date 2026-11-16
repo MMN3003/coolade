@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "گیت‌وی EcoCode",
+    "name": "گیت‌وی {{appName}}",
     "loading": "در حال بارگذاری…"
   },
   "theme": {
@@ -10,7 +10,7 @@
   },
   "help": {
     "title": "راهنمای استفاده",
-    "subtitle": "چطور از EcoCode در ابزارهای برنامه‌نویسی و کد خودتان استفاده کنید"
+    "subtitle": "چطور از {{appName}} در ابزارهای برنامه‌نویسی و کد خودتان استفاده کنید"
   },
   "common": {
     "save": "ذخیره",
@@ -46,7 +46,7 @@
     "export": "خروجی CSV"
   },
   "auth": {
-    "loginTitle": "ورود به گیت‌وی EcoCode",
+    "loginTitle": "ورود به گیت‌وی {{appName}}",
     "username": "نام کاربری",
     "password": "رمز عبور",
     "loginButton": "ورود",

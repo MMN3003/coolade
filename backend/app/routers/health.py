@@ -57,3 +57,13 @@ async def health(db: AsyncSession = Depends(get_db)) -> HealthOut:
         upstream_connected=upstream_connected,
         cli_available=cli_available,
     )
+
+
+@router.get("/api/branding")
+async def branding() -> dict:
+    """Public, unauthenticated: product name for the login page, title and logo."""
+    return {
+        "name": settings.app_name,
+        "slug": settings.app_slug,
+        "api_key_prefix": settings.api_key_prefix,
+    }

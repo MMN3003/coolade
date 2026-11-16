@@ -3,13 +3,21 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    ecocode_env: str = "dev"
+    # Product branding. APP_NAME is the display name shown in the UI, page title,
+    # prompts and API metadata; APP_SLUG is the technical id (cookie name, API key
+    # prefix, MCP server names). Both default to Coolade.
+    app_name: str = "Coolade"
+    app_slug: str = "coolade"
+
+    # Legacy ECOCODE_* names are still accepted so older .env files keep working.
+    coolade_env: str = Field(default="dev", validation_alias=AliasChoices("COOLADE_ENV", "ECOCODE_ENV"))
     upstream_mode: str = "mock"  # mock | cli_creds | apikey
     upstream_base_url: str = "https://claude-compat.example.com"
 
@@ -27,12 +35,17 @@ class Settings(BaseSettings):
     upstream_limit_probe_enabled: bool = False
     upstream_limit_probe_interval: int = 900
 
-    ecocode_secret_key: str = "0" * 44  # Fernet key (base64, 32 bytes) - override in prod
+    coolade_secret_key: str = Field(default="0" * 44, validation_alias=AliasChoices("COOLADE_SECRET_KEY", "ECOCODE_SECRET_KEY"))  # Fernet key (base64, 32 bytes) - override in prod
     session_secret: str = "dev-insecure-session-secret-change-me"
+    # None → Secure cookie only in prod. Set COOKIE_SECURE=false when serving prod over plain HTTP.
+    cookie_secure: str = ""  # "", "true" or "false"
 
     postgres_password: str = "postgres"
-    ecocode_database_url: str = (
-        "postgresql+asyncpg://ecocode:ecocode@postgres:5432/ecocode"
+    coolade_database_url: str = Field(
+        default=(
+        "postgresql+asyncpg://coolade:coolade@postgres:5432/coolade"
+        ),
+        validation_alias=AliasChoices("COOLADE_DATABASE_URL", "ECOCODE_DATABASE_URL"),
     )
     litellm_database_url: str = "postgresql://litellm:litellm@postgres:5432/litellm"
 
@@ -62,8 +75,8 @@ class Settings(BaseSettings):
     # OFF by default. Enabling requires the egress allowlist proxy to be up (the
     # runner refuses to launch without it — see app/sandbox_runner.py).
     sandbox_enabled: bool = False
-    sandbox_image: str = "ecocode-runner:latest"
-    sandbox_network: str = "ecocode_sandbox_net"
+    sandbox_image: str = "coolade-runner:latest"
+    sandbox_network: str = "coolade_sandbox_net"
     sandbox_memory: str = "1g"
     sandbox_cpus: str = "1"
     sandbox_pids_limit: int = 256
@@ -75,7 +88,7 @@ class Settings(BaseSettings):
 
     # --- v2 — persistent workspaces (TECH-V2 §2/§6) ---
     workspace_image: str = "eco-ide-spike-code-server:latest"
-    workspace_network: str = "ecocode_sandbox_net"
+    workspace_network: str = "coolade_sandbox_net"
     workspace_memory: str = "2g"
     workspace_cpus: str = "2"
     workspace_pids_limit: int = 512
@@ -114,7 +127,7 @@ class Settings(BaseSettings):
 
     # --- amendment-7: knowledge layer (docs/KNOWLEDGE.md) ---
     # user+team rules/knowledge pack inlined into the system prompt while under
-    # this many chars; knowledge beyond it spills to <ws>/.ecocode/knowledge/*.md.
+    # this many chars; knowledge beyond it spills to <ws>/.coolade/knowledge/*.md.
     knowledge_inline_max_chars: int = 6000
     # Learning from chats: a scheduler job digests idle conversations with new
     # messages into per-user `learned` knowledge entries (users may opt out).
@@ -144,7 +157,11 @@ class Settings(BaseSettings):
 
     @property
     def session_cookie_name(self) -> str:
-        return "ecocode_session"
+        return f"{self.app_slug}_session"
+
+    @property
+    def api_key_prefix(self) -> str:
+        return f"{self.app_slug}_live_"
 
     @property
     def session_max_age_seconds(self) -> int:

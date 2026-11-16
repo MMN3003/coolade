@@ -14,7 +14,7 @@ import io
 import logging
 from pathlib import Path
 
-logger = logging.getLogger("ecocode.attachment_text")
+logger = logging.getLogger("coolade.attachment_text")
 
 SIDECAR_SUFFIX = ".txt"
 # Only formats the CLI cannot read on its own get a sidecar.

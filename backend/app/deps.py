@@ -87,7 +87,8 @@ async def get_api_key_principal(
     db: AsyncSession = Depends(get_db),
 ) -> ApiKeyPrincipal:
     raw_key = _extract_key(request)
-    if not raw_key or not raw_key.startswith("eco_live_"):
+    # Keys minted before the rename start with eco_live_; keep accepting them.
+    if not raw_key or not raw_key.startswith((settings.api_key_prefix, "eco_live_")):
         raise unauthorized("کلید API نامعتبر است.")
     key_hash = hash_api_key(raw_key)
     result = await db.execute(select(ApiKey).where(ApiKey.key_hash == key_hash))

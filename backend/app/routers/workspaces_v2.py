@@ -120,7 +120,7 @@ async def create_workspace(
     await db.flush()
     w.container_name = ws.container_name(w.id)
     w.volume_name = ws.volume_name(w.id)
-    gw_key = f"eco-ws{w.id}-{secrets.token_urlsafe(24)}"
+    gw_key = f"coolade-ws{w.id}-{secrets.token_urlsafe(24)}"
     w.gateway_key_hash = hash_api_key(gw_key)
     await db.commit()
 
@@ -259,5 +259,5 @@ async def authz_workspace(
     w.last_activity_at = datetime.datetime.now(datetime.timezone.utc)
     await db.commit()
     r = Response(status_code=200)
-    r.headers["X-Ecocode-Upstream"] = f"{ws.container_name(ws_id)}:8080"
+    r.headers["X-Coolade-Upstream"] = f"{ws.container_name(ws_id)}:8080"
     return r

@@ -26,7 +26,7 @@ from app.services.quota import check_quota
 from app.errors import AppError
 
 settings = get_settings()
-logger = logging.getLogger("ecocode.relay")
+logger = logging.getLogger("coolade.relay")
 router = APIRouter(prefix="/relay/v1", tags=["relay"])
 
 OAUTH_BETA = "oauth-2025-04-20"

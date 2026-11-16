@@ -78,7 +78,7 @@ def _run_argv(ws_id: int, gateway_key: str) -> list[str]:
         "--cpus", settings.workspace_cpus,
         "--pids-limit", str(settings.workspace_pids_limit),
         "--security-opt", "no-new-privileges",
-        "--label", "ecocode.workspace=1",
+        "--label", "coolade.workspace=1",
         "-v", f"{vol}:/home/coder/project",
     ]
     for k, v in env.items():

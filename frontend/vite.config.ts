@@ -2,7 +2,7 @@ import { fileURLToPath, URL } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// EcoCode Gateway frontend — Vite config.
+// Coolade Gateway frontend — Vite config.
 // Dev proxy: forwards /api and /v1 to the (future) nginx front door per TECH.md §2.
 // This lets `vite dev` work standalone against a locally running backend stack
 // without CORS configuration, mirroring how nginx will route in production.
