@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "EcoCode Gateway",
+    "name": "{{appName}} Gateway",
     "loading": "Loading…"
   },
   "theme": {
@@ -10,7 +10,7 @@
   },
   "help": {
     "title": "Usage Guide",
-    "subtitle": "How to use EcoCode from coding tools and your own code"
+    "subtitle": "How to use {{appName}} from coding tools and your own code"
   },
   "common": {
     "save": "Save",
@@ -45,7 +45,7 @@
     "export": "Export CSV"
   },
   "auth": {
-    "loginTitle": "Sign in to EcoCode Gateway",
+    "loginTitle": "Sign in to {{appName}} Gateway",
     "username": "Username",
     "password": "Password",
     "loginButton": "Sign in",

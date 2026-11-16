@@ -54,7 +54,7 @@ rate_limiter = _SlidingWindow(settings.service_rate_per_min)
 
 # ---------------------------------------------------------------- turn keys
 # The general-chat CLI runs IN-PROCESS in the backend container (not in an
-# ecows_* container), so it has no workspace gateway key. Before each turn,
+# coolws_* container), so it has no workspace gateway key. Before each turn,
 # cli_runner mints a short-lived key here and puts it in the generated
 # --mcp-config; the gateway resolves it from this in-memory map. Process
 # restart voids all keys — fine, the turn dies with the process anyway.
@@ -68,7 +68,7 @@ def mint_turn_key(user_id: int) -> str:
     now = time.monotonic()
     for k in [k for k, (_, exp) in _turn_keys.items() if exp < now]:
         _turn_keys.pop(k, None)
-    key = f"eco-turn-{secrets.token_urlsafe(24)}"
+    key = f"coolade-turn-{secrets.token_urlsafe(24)}"
     _turn_keys[key] = (user_id, now + _TURN_KEY_TTL_S)
     return key
 
@@ -313,7 +313,7 @@ async def ora_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[st
     cleaned = clean_read_sql(sql)
     limit = limit or settings.service_sql_row_limit
     # Oracle: no `AS` in table aliases; row cap via FETCH FIRST (12c+).
-    wrapped = f"SELECT * FROM ({cleaned}) ecocode_sub FETCH FIRST {limit + 1} ROWS ONLY"
+    wrapped = f"SELECT * FROM ({cleaned}) coolade_sub FETCH FIRST {limit + 1} ROWS ONLY"
     conn = await _ora_connect(dsn)
     try:
         cols, records = await _ora_fetch(conn, wrapped)
@@ -456,7 +456,7 @@ async def _pg_connect(dsn: str) -> asyncpg.Connection:
         server_settings={
             "statement_timeout": str(settings.service_sql_timeout_s * 1000),
             "default_transaction_read_only": "on",
-            "application_name": "ecocode-svc-gateway",
+            "application_name": "coolade-svc-gateway",
         },
     )
 
@@ -507,7 +507,7 @@ async def sql_run_query(dsn: str, sql: str, limit: int | None = None) -> dict[st
     limit = limit or settings.service_sql_row_limit
     # Wrapping (legal for SELECT and WITH subqueries in PG) bounds the result
     # server-side; +1 row detects truncation honestly.
-    wrapped = f"SELECT * FROM ({cleaned}) AS _ecocode_sub LIMIT {limit + 1}"
+    wrapped = f"SELECT * FROM ({cleaned}) AS _coolade_sub LIMIT {limit + 1}"
     conn = await _pg_connect(dsn)
     try:
         records = await conn.fetch(wrapped)

@@ -21,7 +21,7 @@ from app.models import Workspace
 from app.services import workspaces as ws
 
 settings = get_settings()
-logger = logging.getLogger("ecocode.reaper")
+logger = logging.getLogger("coolade.reaper")
 
 
 def _now() -> datetime.datetime:

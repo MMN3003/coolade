@@ -1,14 +1,14 @@
-# EcoCode Gateway: Production Deployment Guide
+# Coolade Gateway: Production Deployment Guide
 
-This guide is for the DevOps engineer deploying EcoCode Gateway on an existing Linux server that already runs nginx. The release contains **only prebuilt Docker images and configuration**. No source code is shipped. Inside the backend image the Python code is compiled bytecode only.
+This guide is for the DevOps engineer deploying Coolade Gateway on an existing Linux server that already runs nginx. The release contains **only prebuilt Docker images and configuration**. No source code is shipped. Inside the backend image the Python code is compiled bytecode only.
 
 ---
 
 ## 1. What you receive
 
 ```
-ecocode-<version>/
-├── images/ecocode-images-<version>.tar.gz   # 3 Docker images (backend, web, postgres)
+coolade-<version>/
+├── images/coolade-images-<version>.tar.gz   # 3 Docker images (backend, web, postgres)
 ├── docker-compose.yml                       # production stack
 ├── env.example                              # settings template -> .env
 ├── nginx-site.conf                          # site config for the host nginx
@@ -23,7 +23,7 @@ ecocode-<version>/
 Browser / Claude Code ──HTTPS──> host nginx :443  (TLS, your domain)
                                      │ proxy_pass http://127.0.0.1:8085
                                      ▼
-                         ┌─ docker: ecocode ─────────────────────────┐
+                         ┌─ docker: coolade ─────────────────────────┐
                          │  web (nginx + built SPA)   127.0.0.1:8085 │
                          │     ├─ /api, /relay, /mcp ─> backend:8000 │
                          │  backend (FastAPI + Claude Code CLI)      │
@@ -58,12 +58,13 @@ You also need:
 
 ```bash
 # as a sudo-capable user
-sudo mkdir -p /opt/ecocode && sudo chown "$USER" /opt/ecocode
-tar -xzf ecocode-<version>.tar.gz -C /opt/ecocode --strip-components=1
-cd /opt/ecocode
+sudo mkdir -p /opt/coolade && sudo chown "$USER" /opt/coolade
+tar -xzf coolade-<version>.tar.gz -C /opt/coolade --strip-components=1
+cd /opt/coolade
 sha256sum -c SHA256SUMS                      # every line must say OK
-docker load -i images/ecocode-images-*.tar.gz
-docker images | grep ecocode                 # ecocode-backend / -web / -postgres : <version>
+docker load -i images/coolade-images-*.tar.gz
+docker images | grep coolade                 # coolade-backend / -web / -postgres : <version>
+# (prefix is APP_SLUG used at build time; default coolade)
 ```
 
 ## 5. Sign in to the Claude subscription (once)
@@ -84,14 +85,14 @@ ls -l ~/.claude/.credentials.json                   # must exist, mode 600
 ## 6. Configure `.env`
 
 ```bash
-cd /opt/ecocode
+cd /opt/coolade
 cp env.example .env && chmod 600 .env
 ```
 
 Fill every `<...>` value:
 
 ```bash
-python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'  # ECOCODE_SECRET_KEY
+python3 -c 'import os,base64;print(base64.urlsafe_b64encode(os.urandom(32)).decode())'  # COOLADE_SECRET_KEY
 openssl rand -hex 32   # SESSION_SECRET
 openssl rand -hex 24   # POSTGRES_PASSWORD
 openssl rand -hex 32   # INTERNAL_API_KEY
@@ -99,19 +100,21 @@ openssl rand -hex 32   # INTERNAL_API_KEY
 
 | Variable | Value |
 |---|---|
-| `ECOCODE_VERSION` | Already set to the release version. Must match the loaded image tag. |
+| `APP_VERSION` | Already set to the release version. Must match the loaded image tag. |
+| `APP_NAME` | Product name shown in the UI, page title and login (default `Coolade`). Can be changed any time; restart the backend. |
+| `APP_SLUG` | Technical id (default `coolade`): image names, Docker volume prefix, cookie name, API key prefix `<slug>_live_`. Set it once before the first start. |
 | `CLAUDE_CREDS_DIR` | Absolute path, e.g. `/home/deploy/.claude`. `~` does **not** work. |
 | `ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD` | The first admin, created on first start only. Change the password in the UI later. |
 | `COOKIE_SECURE` | `true` when the site is served over HTTPS (required for production). |
 | `WEB_PORT` | `8085` by default. Change it if that port is taken; then also change `nginx-site.conf`. |
 | `HTTPS_PROXY` | Only if outbound access to Anthropic needs a proxy. |
 
-**Back up `.env`.** `ECOCODE_SECRET_KEY` encrypts stored tokens. If you lose it, the encrypted data can't be read.
+**Back up `.env`.** `COOLADE_SECRET_KEY` encrypts stored tokens. If you lose it, the encrypted data can't be read.
 
 ## 7. Start the stack
 
 ```bash
-cd /opt/ecocode
+cd /opt/coolade
 docker compose up -d
 docker compose ps                      # postgres healthy, backend healthy, web running
 curl -s http://127.0.0.1:8085/api/health
@@ -123,18 +126,18 @@ On first start the backend creates the database schema (migrations run automatic
 ## 8. Configure the host nginx
 
 ```bash
-sudo cp /opt/ecocode/nginx-site.conf /etc/nginx/sites-available/ecocode.conf
-sudo sed -i 's/ai.example.com/YOUR.DOMAIN/g' /etc/nginx/sites-available/ecocode.conf
+sudo cp /opt/coolade/nginx-site.conf /etc/nginx/sites-available/coolade.conf
+sudo sed -i 's/ai.example.com/YOUR.DOMAIN/g' /etc/nginx/sites-available/coolade.conf
 # adjust ssl_certificate / ssl_certificate_key if you don't use Let's Encrypt paths
-sudo ln -s /etc/nginx/sites-available/ecocode.conf /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/coolade.conf /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
 Notes:
-* On RHEL-style nginx (no `sites-available`), copy the file to `/etc/nginx/conf.d/ecocode.conf` instead.
+* On RHEL-style nginx (no `sites-available`), copy the file to `/etc/nginx/conf.d/coolade.conf` instead.
 * **Let's Encrypt:** run `sudo certbot certonly --webroot -w /var/www/html -d YOUR.DOMAIN` while only the port-80 server block is active, then enable the 443 block. Alternatively, `certbot --nginx -d YOUR.DOMAIN` edits the file for you.
 * nginx older than 1.25 doesn't accept `http2 on;`. Remove that line and use `listen 443 ssl http2;` instead.
-* If another site already defines a `map $http_upgrade ...`, keep the map in this file anyway. Its variable name is unique (`$ecocode_connection_upgrade`).
+* If another site already defines a `map $http_upgrade ...`, keep the map in this file anyway. Its variable name is unique (`$coolade_connection_upgrade`).
 * **Streaming must not be buffered.** Keep `proxy_buffering off` and the 900 s timeouts, or chat replies arrive all at once and long Claude Code requests get cut off.
 * If a CDN or load balancer sits in front, also raise its timeouts (at least 600 s) and turn off response buffering there.
 
@@ -158,7 +161,7 @@ Before creating users, add models to the plans under **پلن‌ها** (plans). 
 ```bash
 docker compose logs -f backend        # app + Claude CLI
 docker compose logs -f web            # inner nginx
-tail -f /var/log/nginx/ecocode.*.log  # host nginx
+tail -f /var/log/nginx/coolade.*.log  # host nginx
 ```
 Container logs are rotated automatically (5 × 20 MB per service).
 
@@ -170,22 +173,22 @@ docker compose restart backend
 ```
 `restart: unless-stopped` brings the stack back after a reboot (Docker must be enabled: `sudo systemctl enable docker`).
 
-**Backup** (daily cron recommended)
+**Backup** (daily cron recommended; volume names start with `APP_SLUG`, default `coolade`)
 ```bash
-cd /opt/ecocode
-docker compose exec -T postgres pg_dumpall -U postgres | gzip > /backup/ecocode-db-$(date +%F).sql.gz
+cd /opt/coolade
+docker compose exec -T postgres pg_dumpall -U postgres | gzip > /backup/coolade-db-$(date +%F).sql.gz
 for v in users_data teams_data attachments_data services_data claude_state; do
-  docker run --rm -v ecocode_$v:/v -v /backup:/b alpine tar -czf /b/ecocode-$v-$(date +%F).tgz -C /v .
+  docker run --rm --entrypoint tar -v coolade_$v:/v -v /backup:/b coolade-postgres:$(grep ^APP_VERSION= .env | cut -d= -f2) -czf /b/coolade-$v-$(date +%F).tgz -C /v .
 done
-cp .env /backup/ecocode-env-$(date +%F)     # keep secure
+cp .env /backup/coolade-env-$(date +%F)     # keep secure
 ```
 
 **Restore** (on an empty stack)
 ```bash
 docker compose up -d postgres
-gunzip -c ecocode-db-DATE.sql.gz | docker compose exec -T postgres psql -U postgres
+gunzip -c coolade-db-DATE.sql.gz | docker compose exec -T postgres psql -U postgres
 for v in users_data teams_data attachments_data services_data claude_state; do
-  docker run --rm -v ecocode_$v:/v -v /backup:/b alpine sh -c "cd /v && tar -xzf /b/ecocode-$v-DATE.tgz"
+  docker run --rm --entrypoint tar -v coolade_$v:/v -v /backup:/b coolade-postgres:$(grep ^APP_VERSION= .env | cut -d= -f2) -xzf /b/coolade-$v-DATE.tgz -C /v
 done
 docker compose up -d
 ```
@@ -194,14 +197,14 @@ docker compose up -d
 ```bash
 # 1. back up (above)
 # 2. load the new images
-docker load -i images/ecocode-images-<new>.tar.gz
+docker load -i images/coolade-images-<new>.tar.gz
 # 3. point .env to the new version, replace docker-compose.yml with the new one
-sed -i 's/^ECOCODE_VERSION=.*/ECOCODE_VERSION=<new>/' .env
+sed -i 's/^APP_VERSION=.*/APP_VERSION=<new>/' .env
 # 4. recreate (database migrations run automatically on backend start)
 docker compose up -d
 curl -s http://127.0.0.1:8085/api/health
 ```
-To roll back, set the old `ECOCODE_VERSION` and run `docker compose up -d`. If the new release ran database migrations, restore the database backup taken before the upgrade.
+To roll back, set the old `APP_VERSION` and run `docker compose up -d`. If the new release ran database migrations, restore the database backup taken before the upgrade.
 
 **Claude login expired or revoked**
 Admin → **اتصال آپ‌استریم** shows disconnected. Run `claude` and `/login` again as the UID-1000 user on the host. The backend picks up the changed file within about 60 s; you can also run `docker compose restart backend`.
@@ -211,7 +214,7 @@ Admin → **اتصال آپ‌استریم** shows disconnected. Run `claude` an
 * Keep `BIND_ADDR=127.0.0.1`. Never publish 8085 or 5432 to the internet.
 * `.env` and `~/.claude/.credentials.json` are secrets. Keep them at mode 600, out of git and out of tickets.
 * The admin role can read every user's conversations. Give it to as few people as possible.
-* API keys (`eco_live_...`) are per user and can be revoked in the UI. Revoke any key that has been pasted in chat or email.
+* API keys (`coolade_live_...`) are per user and can be revoked in the UI. Revoke any key that has been pasted in chat or email.
 * `X-Forwarded-For` is set by the host nginx to the real client IP. The app uses it for login rate limiting, so don't let clients set it.
 
 ## 12. Troubleshooting

@@ -1,14 +1,14 @@
-# EcoCode Gateway - production stack (prebuilt images only, no source code).
+# Coolade Gateway (name set by APP_NAME) - production stack (prebuilt images only, no source code).
 # The web container listens on 127.0.0.1 only; the host's nginx terminates TLS
 # for the public domain and proxies to it.
-name: ecocode
+name: ${APP_SLUG:-coolade}
 
 x-logging: &logging
   driver: json-file
   options: { max-size: "20m", max-file: "5" }
 
 networks:
-  ecocode_net: {}
+  coolade_net: {}
 
 volumes:
   postgres_data:
@@ -20,7 +20,7 @@ volumes:
 
 services:
   postgres:
-    image: ecocode-postgres:${ECOCODE_VERSION}
+    image: ${APP_SLUG:-coolade}-postgres:${APP_VERSION}
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -28,7 +28,7 @@ services:
       POSTGRES_DB: postgres
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks: [ecocode_net]
+    networks: [coolade_net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -37,10 +37,12 @@ services:
     logging: *logging
 
   backend:
-    image: ecocode-backend:${ECOCODE_VERSION}
+    image: ${APP_SLUG:-coolade}-backend:${APP_VERSION}
     restart: unless-stopped
     environment:
-      ECOCODE_ENV: prod
+      APP_NAME: ${APP_NAME:-Coolade}
+      APP_SLUG: ${APP_SLUG:-coolade}
+      COOLADE_ENV: prod
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       UPSTREAM_MODE: ${UPSTREAM_MODE:-cli_creds}
       UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL:-https://api.anthropic.com}
@@ -53,10 +55,10 @@ services:
       THINKING_MAX_LEVEL: ${THINKING_MAX_LEVEL:-deep}
       ROLLING_WINDOW_HOURS: ${ROLLING_WINDOW_HOURS:-5}
       SANDBOX_ENABLED: "0"
-      ECOCODE_SECRET_KEY: ${ECOCODE_SECRET_KEY}
+      COOLADE_SECRET_KEY: ${COOLADE_SECRET_KEY}
       SESSION_SECRET: ${SESSION_SECRET}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      ECOCODE_DATABASE_URL: postgresql+asyncpg://ecocode:${POSTGRES_PASSWORD}@postgres:5432/ecocode
+      COOLADE_DATABASE_URL: postgresql+asyncpg://coolade:${POSTGRES_PASSWORD}@postgres:5432/coolade
       LITELLM_MASTER_KEY: ${INTERNAL_API_KEY}
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
@@ -75,7 +77,7 @@ services:
       - attachments_data:/data/attachments
       - claude_state:/home/app/.claude
       - ${CLAUDE_CREDS_DIR}:/host_claude:ro
-    networks: [ecocode_net]
+    networks: [coolade_net]
     depends_on:
       postgres: { condition: service_healthy }
     healthcheck:
@@ -88,12 +90,12 @@ services:
     logging: *logging
 
   web:
-    image: ecocode-web:${ECOCODE_VERSION}
+    image: ${APP_SLUG:-coolade}-web:${APP_VERSION}
     restart: unless-stopped
     ports:
       - "${BIND_ADDR:-127.0.0.1}:${WEB_PORT:-8085}:80"
     networks:
-      ecocode_net:
+      coolade_net:
         aliases: [nginx]
     depends_on:
       backend: { condition: service_started }

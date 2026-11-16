@@ -3,7 +3,7 @@
 Exposed by the MCP gateway at the reserved slug `_me` (routers/mcp_gateway.py).
 Caller = whoever the turn key / workspace key / API key resolves to; every tool
 acts only on THAT user's own rows (scope `user`, or `user_service` for a service
-they hold a grant on). This is what the eco-memory skill («یادت باشه…») calls,
+they hold a grant on). This is what the coolade-memory skill («یادت باشه…») calls,
 so a remembered fact lands in knowledge_entries and shows up in «دانش من» —
 instead of the v1 approach of hand-editing the workspace CLAUDE.md.
 """

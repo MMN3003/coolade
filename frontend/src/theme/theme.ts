@@ -7,9 +7,9 @@ import { faIR } from '@mui/material/locale';
  *
  * Two cohesive palettes are supported through `makeTheme(mode)`:
  *  - `dark`  — the original ChatGPT/GapGPT-inspired look: near-black canvas,
- *              #1e1e1e surfaces, soft 1px dividers, a single green accent.
+ *              #1e1e1e surfaces, soft 1px dividers, a single cool-blue accent.
  *  - `light` — a clean ChatGPT-light look: near-white canvas, #f7f7f8 surfaces,
- *              dark text, subtle #e5e5e5 borders, the same green accent.
+ *              dark text, subtle #e5e5e5 borders, the same cool-blue accent.
  *
  * The active mode is chosen at runtime (see uiStore + main.tsx). Global
  * component overrides derive their colours from the mode tokens below so they
@@ -26,12 +26,12 @@ export type ThemeMode = 'light' | 'dark';
  */
 export const SURFACE_2 = 'var(--ec-surface-2, #2b2b2b)';
 
-// Shared green accent — identical in both modes.
-const ACCENT = { main: '#2e9e5b', light: '#43b072', dark: '#2e7d32', contrastText: '#ffffff' };
+// Shared cool-blue accent (Coolade brand) — identical in both modes.
+const ACCENT = { main: '#1488c8', light: '#3aa0d8', dark: '#0f6fa3', contrastText: '#ffffff' };
 
 const tokens = {
   dark: {
-    secondary: '#4aa3df',
+    secondary: '#2bb5a8',
     background: { default: '#0d0d0d', paper: '#1e1e1e' },
     text: { primary: '#ECECEC', secondary: '#9a9a9a' },
     divider: '#2a2a2a',
@@ -44,7 +44,7 @@ const tokens = {
     selectedHover: 'rgba(255,255,255,0.12)',
   },
   light: {
-    secondary: '#2f7bb3',
+    secondary: '#1f8f85',
     background: { default: '#ffffff', paper: '#f7f7f8' },
     text: { primary: '#1a1a1a', secondary: '#5a5a5a' },
     divider: '#e5e5e5',

@@ -1,6 +1,6 @@
 # Production backend: same runtime as the dev image, but ships only compiled
 # bytecode (.pyc) - no .py source, tests or mock tooling.
-ARG BASE_IMAGE=ecocode-backend:latest
+ARG BASE_IMAGE=coolade-backend:latest
 FROM ${BASE_IMAGE}
 USER root
 RUN set -eu; \

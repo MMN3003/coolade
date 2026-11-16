@@ -1,8 +1,8 @@
-# سند فنی (TECH) — EcoCode Studio v2
+# سند فنی (TECH) — Coolade Studio v2
 
 | | |
 |---|---|
-| **محصول** | EcoCode Studio (PRD: `docs/PRD-V2.md` v2.0) |
+| **محصول** | Coolade Studio (PRD: `docs/PRD-V2.md` v2.0) |
 | **نسخه سند** | 2.1 — ارجاع به ضمیمهٔ ۱ (سرویس‌های سازمانی) افزوده شد؛ پیشین 2.0: کامل (§۰ تا §۱۰ + ضمیمه)؛ سه spike بنیادی اجرا و بسته شد |
 | **تاریخ** | 2026-08-29 |
 | **مدیر فنی** | — |
@@ -31,7 +31,7 @@
 - اگر `anthropic-beta` کلاینت شامل `oauth-2025-04-20` نبود، آن را اضافه می‌کند (بقیهٔ betaها دست‌نخورده)؛
 - پاسخ را chunked و بدون تغییر برمی‌گرداند و ضمن عبور، usage و هدرهای ratelimit را از استریم برمی‌دارد.
 
-relay داخل یک کانتینر با mount فقط‌خواندنیِ volume اعتبارنامهٔ بک‌اند (`ecocode_claude_state`) اجرا شد تا توکن معتبر از مرز کنترل‌شده خارج نشود. کلاینت = `claude` واقعی (نسخهٔ 2.1.246) با `ANTHROPIC_BASE_URL=http://127.0.0.1:8899` و یک کلید dummy (`eco-...`)، روی یک workspace واقعی با فایل nonce.
+relay داخل یک کانتینر با mount فقط‌خواندنیِ volume اعتبارنامهٔ بک‌اند (`coolade_claude_state`) اجرا شد تا توکن معتبر از مرز کنترل‌شده خارج نشود. کلاینت = `claude` واقعی (نسخهٔ 2.1.246) با `ANTHROPIC_BASE_URL=http://127.0.0.1:8899` و یک کلید dummy (`eco-...`)، روی یک workspace واقعی با فایل nonce.
 
 ### ۰.۳ نتایج (ground truth)
 
@@ -86,8 +86,8 @@ relay داخل یک کانتینر با mount فقط‌خواندنیِ volume �
 ### ۱.۳ توپولوژی (به‌روزشده با تصمیم‌های §۲/§۳/D3.6)
 
 ```
-                         ┌─────────────────── سرور EcoCode ───────────────────┐
-[مرورگر dev] ──────► nginx ──/ide/<id>/──(auth_request→backend)──► کانتینر ورک‌اسپیس ecows_<id>
+                         ┌─────────────────── سرور Coolade ───────────────────┐
+[مرورگر dev] ──────► nginx ──/ide/<id>/──(auth_request→backend)──► کانتینر ورک‌اسپیس coolws_<id>
    IDE + افزونهٔ                │                                    ├─ code-server (webview چت = Claude Code)
    Claude Code                  │                                    └─ claude (bundled) ─┐
                                 │                                                          │ ANTHROPIC_BASE_URL
@@ -119,8 +119,8 @@ v1 (`sandbox_runner.py`) برای **هر نوبت** یک کانتینر throwawa
 
 **تصمیم D2.1 — واحد فیزیکی ورک‌اسپیس = یک Docker volume ماندگار + یک کانتینرِ قابل stop/start، هر دو per (کاربر × ریپو).**
 
-- **volume** (`ecows_<workspace_id>`) نگهدارندهٔ حقیقتِ روی دیسک است: clone ریپو، `node_modules`، کش build، برنچ کاری. **بقای ماندگاری از volume می‌آید، نه از زندهٔ‌بودن کانتینر** — پس idle-stop هیچ کار کاربر را از بین نمی‌برد.
-- **کانتینر workspace** (`ecows_<workspace_id>`) از یک **image واحد** ساخته می‌شود که هم `code-server` و هم `claude-code` CLI (+ node + git + bash) را دارد. یعنی image فعلی `runner/` با پایهٔ code-server ادغام می‌شود (§۶).
+- **volume** (`coolws_<workspace_id>`) نگهدارندهٔ حقیقتِ روی دیسک است: clone ریپو، `node_modules`، کش build، برنچ کاری. **بقای ماندگاری از volume می‌آید، نه از زندهٔ‌بودن کانتینر** — پس idle-stop هیچ کار کاربر را از بین نمی‌برد.
+- **کانتینر workspace** (`coolws_<workspace_id>`) از یک **image واحد** ساخته می‌شود که هم `code-server` و هم `claude-code` CLI (+ node + git + bash) را دارد. یعنی image فعلی `runner/` با پایهٔ code-server ادغام می‌شود (§۶).
 
 **تصمیم D2.2 — IDE و ایجنت در «یک» کانتینر، نه دو تا.** پروسهٔ code-server به‌عنوان سرویس بلندعمر داخل کانتینر بالاست؛ هر نوبت ایجنت با `docker exec <container> claude -p …` **داخل همان کانتینر** اجرا می‌شود. دلیل: PRD §۳.۲ می‌خواهد IDE و ایجنت یک حقیقت را ببینند — نه فقط یک فایل‌سیستم، بلکه یک **محیط** (اگر کاربر در ترمینال IDE، `npm run dev` را بالا آورد یا ابزاری global نصب کرد، ایجنت هم همان را ببیند). volume مشترک فقط فایل‌ها را یکی می‌کند؛ پروسه‌های در حال اجرا و `$PATH` و ابزارهای نصب‌شده فقط وقتی یکی می‌شوند که کانتینر یکی باشد.
 
@@ -225,15 +225,15 @@ v1 (`sandbox_runner.py`) برای **هر نوبت** یک کانتینر throwawa
 
 ---
 
-## ۳. گِیت کردن code-server با نشست EcoCode (حل R4)
+## ۳. گِیت کردن code-server با نشست Coolade (حل R4)
 
 ### ۳.۰ وضعیت v1 و شکاف امنیتی
 
-v1 یک **instance مشترکِ تک** code-server روی پورت اختصاصی ۸۰۹۰ دارد؛ auth = یک `PASSWORD` واحد؛ و mount کردن `users_data:/data/users` یعنی هر کسی که پسورد را دارد **workspace همهٔ کاربران** را می‌بیند. برای v2 (که هر کاربر باید فقط ورک‌اسپیس خودش را ببیند، بدون پسورد جدا) این کافی نیست. خوشبختانه D2.2 مسئله را ساده کرد: **هر ورک‌اسپیس کانتینر خودش را دارد و code-server داخل همان کانتینر است** (`ecows_<id>:8080` روی شبکهٔ internal). پس §۳ فقط باید لایهٔ auth/پروکسی جلوی این instanceهای پویا را قطعی کند — نه ساختن per-user instance از صفر.
+v1 یک **instance مشترکِ تک** code-server روی پورت اختصاصی ۸۰۹۰ دارد؛ auth = یک `PASSWORD` واحد؛ و mount کردن `users_data:/data/users` یعنی هر کسی که پسورد را دارد **workspace همهٔ کاربران** را می‌بیند. برای v2 (که هر کاربر باید فقط ورک‌اسپیس خودش را ببیند، بدون پسورد جدا) این کافی نیست. خوشبختانه D2.2 مسئله را ساده کرد: **هر ورک‌اسپیس کانتینر خودش را دارد و code-server داخل همان کانتینر است** (`coolws_<id>:8080` روی شبکهٔ internal). پس §۳ فقط باید لایهٔ auth/پروکسی جلوی این instanceهای پویا را قطعی کند — نه ساختن per-user instance از صفر.
 
 ### ۳.۱ الزام و مدل تهدید
 
-- **الزام (PRD I1):** فقط **مالکِ** ورک‌اسپیس به code-server آن دسترسی دارد؛ auth از **همان نشست EcoCode** می‌آید (کوکی session موجود v1)، **بدون پسورد جداگانه**.
+- **الزام (PRD I1):** فقط **مالکِ** ورک‌اسپیس به code-server آن دسترسی دارد؛ auth از **همان نشست Coolade** می‌آید (کوکی session موجود v1)، **بدون پسورد جداگانه**.
 - **تهدید:** کاربر A نباید بتواند code-server کاربر B را (حتی با دانستن `workspace_id`) باز کند؛ code-server نباید بدون احراز هویت مستقیم در دسترس باشد؛ کانتینرها پویا می‌آیند/می‌روند (start/stop از §۲).
 
 ### ۳.۲ تصمیم: `auth_request` nginx + upstream پویا + code-server بدون auth داخلی
@@ -243,23 +243,23 @@ v1 یک **instance مشترکِ تک** code-server روی پورت اختصاص�
 `--auth none` امن است چون سه شرط هم‌زمان برقرارند: (۱) code-server روی شبکهٔ internal است و هیچ پورتی publish نمی‌کند (فقط از داخل قابل‌دسترس)؛ (۲) nginx تنها ingress است و پیش از هر پروکسی، `auth_request` را اجرا می‌کند؛ (۳) هر ورک‌اسپیس یک code-server **جدا** دارد، پس مرز کانتینر خودش ایزولاسیون بین‌کاربری را تضمین می‌کند — کاربر A حتی نمی‌تواند به کانتینر B «آدرس بدهد» چون authz مالکیت `<id>` را رد می‌کند.
 
 ```
-مرورگر ── GET /ide/<id>/... (کوکی session EcoCode، same-origin) ──► nginx
+مرورگر ── GET /ide/<id>/... (کوکی session Coolade، same-origin) ──► nginx
                                                                       │
                           auth_request ─► backend GET /internal/authz/workspace/<id>
                                             (کوکی forward می‌شود)
                                             چک: session معتبر؟ user == workspace.owner؟ status==running؟
-                                            ◄─ 200 + هدر X-Ecocode-Upstream: ecows_<id>:8080
+                                            ◄─ 200 + هدر X-Coolade-Upstream: coolws_<id>:8080
                                             ◄─ 401 (بدون session) | 403 (نه مالک) | 409 (stopped) | 404
                                                                       │ (روی 200)
-                          proxy_pass http://$upstream (از هدر، با docker DNS resolve) ─► ecows_<id>:8080
+                          proxy_pass http://$upstream (از هدر، با docker DNS resolve) ─► coolws_<id>:8080
 ```
 
 ### ۳.۳ مسیردهی: same-origin با پیشوند مسیر (چرا نه subdomain/port)
 
 **تصمیم D3.2 — همان host و همان پورت (same-origin)، با پیشوند `/ide/<workspace_id>/`.**
 
-دلیل تعیین‌کننده: **کوکی نشست.** کوکی session روی host اصلی EcoCode ست می‌شود. اگر IDE هم روی همان origin سرو شود، کوکی طبیعتاً همراه هر درخواست (از جمله handshake وب‌سوکت) می‌رود و `auth_request` کار می‌کند. جایگزین‌ها هر کدام هزینه دارند:
-- **subdomain per-workspace** (`<id>.ide.ecocode`): نیازمند wildcard DNS + wildcard TLS (روی on-prem دردسر) و ست‌کردن دامنهٔ کوکی روی دامنهٔ والد؛ کنار گذاشته شد.
+دلیل تعیین‌کننده: **کوکی نشست.** کوکی session روی host اصلی Coolade ست می‌شود. اگر IDE هم روی همان origin سرو شود، کوکی طبیعتاً همراه هر درخواست (از جمله handshake وب‌سوکت) می‌رود و `auth_request` کار می‌کند. جایگزین‌ها هر کدام هزینه دارند:
+- **subdomain per-workspace** (`<id>.ide.coolade`): نیازمند wildcard DNS + wildcard TLS (روی on-prem دردسر) و ست‌کردن دامنهٔ کوکی روی دامنهٔ والد؛ کنار گذاشته شد.
 - **پورت per-workspace از یک pool:** مدیریت پورت و publish کردن پورت‌ها، سطح حمله و پیچیدگی compose را زیاد می‌کند؛ کنار گذاشته شد.
 
 **آیتمِ تأیید — spike اجرا و بسته شد ✅ (2026-08-29، §۳.۱۰).** تنها ریسک باز §۳ (رفتار code-server زیر sub-path) با یک stack واقعی nginx+code-server تست شد و **کار می‌کند**؛ fallback subdomain+تیکت لازم نشد. جزئیات و شرط لازم پیاده‌سازی در §۳.۱۰.
@@ -269,7 +269,7 @@ v1 یک **instance مشترکِ تک** code-server روی پورت اختصاص�
 `GET /internal/authz/workspace/{id}` — فقط برای مصرف داخلی nginx (نه مسیر public؛ روی شبکهٔ داخلی و/یا با هدر اعتماد nginx):
 - ورودی: کوکی‌های forwardشدهٔ مرورگر (شامل session).
 - منطق: session را resolve کن → user؛ اگر session نامعتبر → **401**؛ اگر ورک‌اسپیس متعلق به این user نیست → **403**؛ اگر `status != running` → **409** (فرانت باید اول resume کند، §۳.۶)؛ اگر ورک‌اسپیس نیست → **404**.
-- خروجی موفق: **200** + هدر `X-Ecocode-Upstream: ecows_<id>:8080`. nginx با `auth_request_set $upstream $upstream_http_x_ecocode_upstream;` آن را می‌گیرد و `proxy_pass http://$upstream;` (نامِ کانتینر با docker DNS در زمان درخواست resolve می‌شود — همان ترفند `resolver 127.0.0.11` v1، تا نبود کانتینر nginx را نشکند).
+- خروجی موفق: **200** + هدر `X-Coolade-Upstream: coolws_<id>:8080`. nginx با `auth_request_set $upstream $upstream_http_x_coolade_upstream;` آن را می‌گیرد و `proxy_pass http://$upstream;` (نامِ کانتینر با docker DNS در زمان درخواست resolve می‌شود — همان ترفند `resolver 127.0.0.11` v1، تا نبود کانتینر nginx را نشکند).
 
 این endpoint سبک است (lookup نشست + یک چک مالکیتِ ایندکس‌دار)، ولی `auth_request` برای **هر** درخواست asset اجرا می‌شود؛ در مقیاس «زیر ۱۰ dev» ناچیز است. **بهینه‌سازی اختیاری (D3.5):** پس از اولین authz موفق، بک‌اند یک کوکی امضاشدهٔ کوتاه‌عمرِ scope‌شده به همان `<id>` (مثلاً ۵ دقیقه) ست کند؛ endpoint authz اگر آن کوکی معتبر بود بدون hit به DB سریع 200 برگرداند.
 
@@ -303,7 +303,7 @@ v1 یک **instance مشترکِ تک** code-server روی پورت اختصاص�
 
 | جنبه | v1 | v2 (§۳) |
 |---|---|---|
-| احراز هویت | یک پسورد مشترک code-server | نشست EcoCode، بدون پسورد جدا |
+| احراز هویت | یک پسورد مشترک code-server | نشست Coolade، بدون پسورد جدا |
 | ایزولاسیون بین‌کاربری | هیچ — همه `/data/users` را می‌بینند | مرز کانتینر per-workspace + چک مالکیت authz |
 | قابلیت ابطال | تعویض پسورد مشترک (همه را می‌اندازد) | ابطال نشست خود کاربر |
 | مدل | نقض حریم خصوصی | فقط مالک، پویا، هم‌راستا با auth بقیهٔ محصول |
@@ -312,7 +312,7 @@ v1 یک **instance مشترکِ تک** code-server روی پورت اختصاص�
 
 - **D3.1** الگو = nginx `auth_request` → `/internal/authz/workspace/{id}` + پروکسی پویا؛ code-server با `--auth none` پشت آن (امن به‌خاطر شبکهٔ internal + تک‌ingress بودن nginx + مرز کانتینر per-workspace).
 - **D3.2** مسیردهی same-origin با پیشوند `/ide/<id>/` (به‌خاطر جریان طبیعی کوکی نشست)؛ subdomain/port رد شدند.
-- **D3.3** قرارداد authz: 200+`X-Ecocode-Upstream` / 401 / 403 / 409(stopped) / 404؛ upstream پویا با docker DNS.
+- **D3.3** قرارداد authz: 200+`X-Coolade-Upstream` / 401 / 403 / 409(stopped) / 404؛ upstream پویا با docker DNS.
 - **D3.4** resume در جریانِ باز کردن IDE از راه `POST /resume` پیش از بار کردن iframe.
 - **D3.5** (اختیاری) کوکی authz کوتاه‌عمر برای کاهش hit هر-asset.
 - **D3.6** چت dev = افزونهٔ رسمی `Anthropic.claude-code` داخل code-server (نه چت جدا)؛ عمومی = چت سادهٔ v1؛ هر دو روی یک CLI/relay. (§۳.۷)
@@ -392,9 +392,9 @@ CREATE TABLE workspaces (
     name            VARCHAR(200) NOT NULL,                 -- نام نمایشی
     repo_url        TEXT,                                  -- NULL برای personal
     base_branch     VARCHAR(200),
-    work_branch     VARCHAR(200),                          -- ecocode/<...>
-    container_name  VARCHAR(120),                          -- ecows_<id>
-    volume_name     VARCHAR(120),                          -- ecows_<id>
+    work_branch     VARCHAR(200),                          -- coolade/<...>
+    container_name  VARCHAR(120),                          -- coolws_<id>
+    volume_name     VARCHAR(120),                          -- coolws_<id>
     disk_bytes      BIGINT NOT NULL DEFAULT 0,             -- کش‌شده، توسط اندازه‌گیر دوره‌ای
     retention_days  INTEGER,                               -- override per-workspace؛ NULL = از user/سراسری
     last_activity_at TIMESTAMPTZ NOT NULL DEFAULT now(),   -- سیگنال idle-stop (§۲.۵)
@@ -494,16 +494,16 @@ CREATE INDEX idx_wskey_ws ON workspace_keys(workspace_id);
 | `backend` | FastAPI: auth/ACL/quota/ledger/audit + **relay خام** + مدیر چرخهٔ عمر ورک‌اسپیس | relay جایگزین passthrough؛ مدیر ورک‌اسپیس جدید |
 | `nginx` | ingress: `/api`,`/v1`, و `/ide/<id>/` با auth_request (§۳) | مسیر `/ide/` پویا اضافه شد |
 | `egress` | پروکسی allowlist خروجی ورک‌اسپیس‌ها | پورت مستقیم؛ allowlist = relay بک‌اند + `git.ecobin.ir` + `open-vsx.org` (§۲.۴) |
-| **image واحد ورک‌اسپیس** | build‌شده، runtime کانتینرهای `ecows_<id>` | جایگزین `runner/` + `code-server` تک‌instance |
+| **image واحد ورک‌اسپیس** | build‌شده، runtime کانتینرهای `coolws_<id>` | جایگزین `runner/` + `code-server` تک‌instance |
 | ~~litellm~~, ~~compression~~, ~~code-server مشترک~~ | — | **حذف** (PRD-V2 §۱۱) |
 
 مدیر چرخهٔ عمر برای اجرای `docker` نیاز به دسترسی به Docker socket دارد (مثل v1 که برای sandbox داشت) — با احتیاط: فقط backend، و همهٔ ورودی‌ها به‌صورت argv نه شل (پورت الگوی امن `sandbox_runner`).
 
 ### ۶.۲ شبکه — دسترسی relay از شبکهٔ internal
 
-دو شبکه مثل v1: `ecocode_net` (پل، اینترنت‌دار) و `ecocode_sandbox_net` (**internal: true**، بدون اینترنت). کانتینرهای ورک‌اسپیس **فقط** روی `ecocode_sandbox_net`اند. تنها خروجی‌شان `egress` است. برای این‌که relay بک‌اند از داخل ورک‌اسپیس قابل‌دسترس باشد، دو راه (تصمیم §۶):
+دو شبکه مثل v1: `coolade_net` (پل، اینترنت‌دار) و `coolade_sandbox_net` (**internal: true**، بدون اینترنت). کانتینرهای ورک‌اسپیس **فقط** روی `coolade_sandbox_net`اند. تنها خروجی‌شان `egress` است. برای این‌که relay بک‌اند از داخل ورک‌اسپیس قابل‌دسترس باشد، دو راه (تصمیم §۶):
 - **الف (ساده):** `egress` را طوری allowlist کن که به host بک‌اند هم اجازه دهد؛ ورک‌اسپیس از راه HTTPS_PROXY به relay بک‌اند می‌رسد. مزیت: بک‌اند به شبکهٔ internal وصل نمی‌شود (سطح حملهٔ کمتر).
-- **ب:** backend را هم به `ecocode_sandbox_net` وصل کن و relay را روی یک **listener/پورت مجزا** بگذار که فقط `workspace_keys` را می‌پذیرد؛ مسیرهای admin/DB روی پورت اصلی و شبکهٔ دیگر می‌مانند.
+- **ب:** backend را هم به `coolade_sandbox_net` وصل کن و relay را روی یک **listener/پورت مجزا** بگذار که فقط `workspace_keys` را می‌پذیرد؛ مسیرهای admin/DB روی پورت اصلی و شبکهٔ دیگر می‌مانند.
 
 **انتخاب: الف** — چون توکن آپ‌استریم اصلاً وارد ورک‌اسپیس نمی‌شود، و بردنِ همهٔ ترافیک مدل از `egress` (که allowlist و لاگ دارد) یکدست‌تر و کم‌سطح‌حمله‌تر است. `SANDBOX_ALLOW_HOSTS` = host بک‌اند + `git.ecobin.ir` + `open-vsx.org`.
 
@@ -530,7 +530,7 @@ env احراز هویت (`ANTHROPIC_BASE_URL` = relay، `ANTHROPIC_AUTH_TOKEN` =
 
 ### ۶.۴ فلگ‌های `docker run` کانتینر ماندگار (پورت از `sandbox_runner`)
 
-از v1 عیناً: `--network ecocode_sandbox_net`, `--user 1000:1000`, `--memory/--cpus/--pids-limit`, `--security-opt no-new-privileges`, `--cap-drop ALL`, `-v ecows_<id>:/home/coder/project`. تفاوت با v1: `--read-only` سراسری برداشته می‌شود (code-server به مسیرهای config نیاز دارد)؛ در عوض فقط volume ورک‌اسپیس rw است و بقیهٔ حساسیت‌ها با نبودِ mountِ creds/DB و شبکهٔ internal پوشش داده می‌شود. **بدون `--rm`** (کانتینر ماندگار؛ stop/start به‌جای نابودی) و **بدون timeout سراسری** (نوبت‌ها با idle-stop مدیریت می‌شوند، §۲.۵).
+از v1 عیناً: `--network coolade_sandbox_net`, `--user 1000:1000`, `--memory/--cpus/--pids-limit`, `--security-opt no-new-privileges`, `--cap-drop ALL`, `-v coolws_<id>:/home/coder/project`. تفاوت با v1: `--read-only` سراسری برداشته می‌شود (code-server به مسیرهای config نیاز دارد)؛ در عوض فقط volume ورک‌اسپیس rw است و بقیهٔ حساسیت‌ها با نبودِ mountِ creds/DB و شبکهٔ internal پوشش داده می‌شود. **بدون `--rm`** (کانتینر ماندگار؛ stop/start به‌جای نابودی) و **بدون timeout سراسری** (نوبت‌ها با idle-stop مدیریت می‌شوند، §۲.۵).
 
 ## ۷. capture لیمیت اکانت آپ‌استریم (V6) — با نام‌های واقعی هدر
 
@@ -560,11 +560,11 @@ anthropic-ratelimit-unified-representative-claim | -fallback-percentage
 
 ## ۹. جمع‌بندی مدل امنیت v2
 
-- **ایزولاسیون اجرا:** هر چیزِ دارای Bash/git فقط داخل کانتینر ورک‌اسپیس روی `ecocode_sandbox_net` (internal، بدون اینترنت مستقیم)؛ بدون mount اعتبارنامه/DB بک‌اند؛ سقف mem/cpu/pids؛ `no-new-privileges`؛ `cap-drop ALL`.
+- **ایزولاسیون اجرا:** هر چیزِ دارای Bash/git فقط داخل کانتینر ورک‌اسپیس روی `coolade_sandbox_net` (internal، بدون اینترنت مستقیم)؛ بدون mount اعتبارنامه/DB بک‌اند؛ سقف mem/cpu/pids؛ `no-new-privileges`؛ `cap-drop ALL`.
 - **توکن آپ‌استریم:** هرگز وارد ورک‌اسپیس نمی‌شود؛ فقط در relay بک‌اند تزریق می‌شود (D2.4، اثبات §۳.۱۱). بدترین حالتِ نشتِ کلید workspace = سوزاندن سهمیهٔ خود کاربر (قابل‌ابطال).
 - **egress allowlist:** خروجی ورک‌اسپیس فقط به relay بک‌اند + `git.ecobin.ir` + `open-vsx.org`. حتی `api.anthropic.com` مستقیم در دسترس نیست.
 - **توکن گیت‌لب:** PAT خود کاربر، رمزشده (`gitlab_tokens`)، فقط لحظهٔ clone/push داخل sandbox همان کاربر؛ egress مقصدش را به `git.ecobin.ir` قفل می‌کند.
-- **گِیت IDE:** نشست EcoCode از راه nginx `auth_request` + چک مالکیت + مرز کانتینر per-workspace (§۳). code-server `--auth none` فقط پشت این لایه.
+- **گِیت IDE:** نشست Coolade از راه nginx `auth_request` + چک مالکیت + مرز کانتینر per-workspace (§۳). code-server `--auth none` فقط پشت این لایه.
 - **حریم خصوصی:** ادمین متادیتا/مصرف می‌بیند، نه محتوای گفتگو/ورک‌اسپیس (پورت v1).
 
 ## ۱۰. برنامهٔ تأیید

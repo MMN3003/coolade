@@ -15,6 +15,8 @@ bridged to the CLI on this surface (documented limitation, TECH.md 5.2/5.5).
 """
 from __future__ import annotations
 
+from app.config import get_settings
+
 import datetime
 import json
 import uuid
@@ -169,7 +171,7 @@ async def list_models(
     )
     return {
         "object": "list",
-        "data": [{"id": key, "object": "model", "owned_by": "ecocode"} for (key,) in result.all()],
+        "data": [{"id": key, "object": "model", "owned_by": get_settings().app_slug} for (key,) in result.all()],
     }
 
 

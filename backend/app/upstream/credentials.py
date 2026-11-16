@@ -37,7 +37,7 @@ import httpx
 
 from app.config import get_settings
 
-logger = logging.getLogger("ecocode.upstream.credentials")
+logger = logging.getLogger("coolade.upstream.credentials")
 settings = get_settings()
 
 # ---- legacy/simple status fields kept for the host-seed timestamp shown in the UI ----

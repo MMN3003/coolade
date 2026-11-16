@@ -173,7 +173,7 @@ class ApiKey(Base):
         BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(64), nullable=False)
     key_hash: Mapped[str] = mapped_column(Text, nullable=False)
     litellm_key_id: Mapped[str | None] = mapped_column(Text)
     # v2 — 'claude_code' (raw relay) | 'flatten' (legacy). TECH-V2 §4.1.

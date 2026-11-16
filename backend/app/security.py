@@ -35,7 +35,7 @@ def verify_password(hashed: str | None, plain: str) -> bool:
 
 
 def _fernet() -> Fernet:
-    key = settings.ecocode_secret_key
+    key = settings.coolade_secret_key
     # Accept either a raw urlsafe-base64 Fernet key or derive one from an
     # arbitrary secret so operators can drop in any 32+ char string.
     try:
@@ -59,7 +59,7 @@ def decrypt_secret(ciphertext: str) -> str | None:
 
 
 def _session_serializer() -> URLSafeTimedSerializer:
-    return URLSafeTimedSerializer(settings.session_secret, salt="ecocode-session")
+    return URLSafeTimedSerializer(settings.session_secret, salt="coolade-session")
 
 
 def create_session_cookie(user_id: int, role: str) -> str:
@@ -79,8 +79,8 @@ def read_session_cookie(cookie_value: str) -> dict | None:
 def generate_api_key() -> tuple[str, str, str]:
     """Return (full_key, key_prefix, key_hash)."""
     secret = "".join(secrets.choice(_BASE62) for _ in range(32))
-    full_key = f"eco_live_{secret}"
-    key_prefix = f"eco_live_{secret[:4]}"
+    full_key = f"{settings.api_key_prefix}{secret}"
+    key_prefix = f"{settings.api_key_prefix}{secret[:4]}"
     key_hash = hashlib.sha256(full_key.encode()).hexdigest()
     return full_key, key_prefix, key_hash
 

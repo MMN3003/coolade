@@ -16,7 +16,7 @@ Scopes (knowledge_entries.scope) and delivery:
                  → compiled per turn into --append-system-prompt (compile_turn_context):
                    RULES are always inline (they must bind every answer); KNOWLEDGE is
                    inline while the pack is small, otherwise spilled to
-                   <ws>/.ecocode/knowledge/*.md with an index in the prompt, so a big
+                   <ws>/.coolade/knowledge/*.md with an index in the prompt, so a big
                    knowledge base doesn't ride along every turn (token economy).
 
 Nothing here is a security layer: knowledge shapes answers; access is still
@@ -199,7 +199,7 @@ def minimal_skill_md(slug: str, service_name: str, service_desc: str | None) -> 
     desc = (service_desc or "").strip() or f"گزارش‌گیری از سرویس سازمانی «{service_name}»"
     desc_line = re.sub(r"\s+", " ", desc)[:400]
     return (
-        f"---\nname: eco-svc-{slug}\n"
+        f"---\nname: coolade-svc-{slug}\n"
         f"description: {desc_line} — وقتی کاربر دربارهٔ «{service_name}» یا داده‌های آن می‌پرسد.\n---\n\n"
         f"# سرویس «{service_name}»\n\n"
         f"ابزارهای این سرویس در سرور MCP `{slug}` هستند (`mcp__{slug}__*`). هر عدد فقط از "
@@ -207,12 +207,13 @@ def minimal_skill_md(slug: str, service_name: str, service_desc: str | None) -> 
     )
 
 
-KNOWLEDGE_MARKER = "\n\n<!-- ecocode:knowledge -->\n"
+KNOWLEDGE_MARKER = "\n\n<!-- coolade:knowledge -->\n"
+_LEGACY_KNOWLEDGE_MARKER = "\n\n<!-- ecocode:knowledge -->\n"  # skills published before the rename
 
 
 def apply_addendum(skill_md: str, addendum: str) -> str:
     """Idempotently append (replacing any earlier generated block)."""
-    base = skill_md.split(KNOWLEDGE_MARKER, 1)[0].rstrip()
+    base = skill_md.split(KNOWLEDGE_MARKER, 1)[0].split(_LEGACY_KNOWLEDGE_MARKER, 1)[0].rstrip()
     if not addendum:
         return base + "\n"
     return base + KNOWLEDGE_MARKER + addendum + "\n"
@@ -240,7 +241,7 @@ async def compile_turn_context(
 
     Rules: always inline (user's own → admin-about-user are the same scope; team
     rules per team). Knowledge: inline as long as the whole pack fits
-    `inline_budget` chars, else written to <ws>/.ecocode/knowledge/<file>.md
+    `inline_budget` chars, else written to <ws>/.coolade/knowledge/<file>.md
     with a one-line-per-entry index in the prompt telling the agent to read the
     file when the topic comes up."""
     budget = inline_budget if inline_budget is not None else settings.knowledge_inline_max_chars
@@ -277,7 +278,7 @@ async def compile_turn_context(
 
     inline_know = [f"## {label}\n\n{_render_entries(rows)}" for _f, label, rows in know_blocks]
     head = (
-        "# دانش و قوانین سازمانی (EcoCode)\n"
+        f"# دانش و قوانین سازمانی ({settings.app_name})\n"
         "این بخش از پایگاه دانش سازمان ساخته شده و مقدم بر حدس توست. "
         "قوانین الزامی‌اند؛ دانش را وقتی به موضوع مربوط است به‌کار بگیر و "
         "اگر با گفتهٔ کاربر تضاد دارد، تضاد را بگو.\n\n"
@@ -290,7 +291,7 @@ async def compile_turn_context(
     # spill knowledge to files, keep an index inline
     index_lines: list[str] = []
     for fname, label, rows in know_blocks:
-        rel = f".ecocode/knowledge/{fname}.md"
+        rel = f".coolade/knowledge/{fname}.md"
         ctx.files[rel] = f"# {label}\n\n{_render_entries(rows, numbered=False)}\n"
         titles = "؛ ".join(e.title for e in rows[:40])
         more = "" if len(rows) <= 40 else f" و {len(rows) - 40} مورد دیگر"
@@ -305,11 +306,11 @@ async def compile_turn_context(
 
 def write_context_files(ws: Path, files: dict[str, str]) -> None:
     """Materialise spilled knowledge files; remove stale ones we wrote earlier."""
-    kdir = ws / ".ecocode" / "knowledge"
+    kdir = ws / ".coolade" / "knowledge"
     if kdir.is_dir():
         for child in kdir.iterdir():
             if child.is_file() and child.suffix == ".md":
-                rel = f".ecocode/knowledge/{child.name}"
+                rel = f".coolade/knowledge/{child.name}"
                 if rel not in files:
                     try:
                         child.unlink()

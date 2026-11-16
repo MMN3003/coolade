@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "EcoCode Gateway",
+    "title": "Coolade Gateway",
     "version": "1.4.0"
   },
   "paths": {

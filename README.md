@@ -1,4 +1,4 @@
-# EcoCode Gateway
+# Coolade Gateway
 
 گیت‌وی سازمانی برای مدیریت دسترسی، سهمیه و مصرف یک اشتراک/سرویس Claude-سازگار بین
 چند کاربر داخلی — چت وب فارسی (RTL) + کلید API شخصی سازگار با Cline/ابزارهای
@@ -27,7 +27,7 @@ curl http://localhost:8085/api/health
                                                        │            → مستقیم به UPSTREAM_BASE_URL
                                                        └─ کلید API: litellm(:4000) → custom handler
                                                                     → UPSTREAM_BASE_URL یا mock-upstream
-backend/litellm → postgres (دو DB: ecocode, litellm)
+backend/litellm → postgres (دو DB: coolade, litellm)
 ```
 
 جزئیات کامل در `docs/TECH.md`.
@@ -39,7 +39,7 @@ backend/litellm → postgres (دو DB: ecocode, litellm)
 | `nginx` | تنها سرویس expose‌شده روی هاست؛ سرو SPA (placeholder تا وقتی فرانت build شود) + پروکسی `/api`، `/v1` |
 | `backend` | FastAPI: auth، ledger، quota، CLI runner (چت وب)، workspace، admin API |
 | `litellm` | فقط برای مسیر passthrough (کلید API شخصی) — چت وب از آن عبور نمی‌کند |
-| `postgres` | دو دیتابیس مجزا: `ecocode` (ماژول ما) و `litellm` (مدیریت‌شده توسط خودش) |
+| `postgres` | دو دیتابیس مجزا: `coolade` (ماژول ما) و `litellm` (مدیریت‌شده توسط خودش) |
 | `mock-upstream` | (`profile: dev`) استاب SSE برای مسیر passthrough در mode `mock` |
 
 ## متغیرهای محیطی مهم
@@ -56,7 +56,7 @@ backend/litellm → postgres (دو DB: ecocode, litellm)
 ## اجرای مقابل سرویس واقعی (production)
 
 ```dotenv
-ECOCODE_ENV=prod
+COOLADE_ENV=prod
 UPSTREAM_MODE=cli_creds
 UPSTREAM_BASE_URL=https://<آدرس سرویس Claude-سازگار شما>
 CLAUDE_CREDS_DIR=/home/<user>/.claude   # مسیر مطلق واقعی روی هاست، بعد از یک‌بار `claude login`
@@ -78,8 +78,8 @@ MOCK_CLI=0
 
 ## بکاپ
 
-- `postgres_data` (دیتابیس): `docker compose exec postgres pg_dump -U ecocode ecocode > backup.sql` — روزانه با cron پیشنهاد می‌شود.
-- `users_data` (فایل‌های workspace کاربران): `docker run --rm -v ecocode_users_data:/data -v $(pwd):/backup alpine tar czf /backup/users_data.tar.gz -C /data .`
+- `postgres_data` (دیتابیس): `docker compose exec postgres pg_dump -U coolade coolade > backup.sql` — روزانه با cron پیشنهاد می‌شود.
+- `users_data` (فایل‌های workspace کاربران): `docker run --rm -v coolade_users_data:/data -v $(pwd):/backup alpine tar czf /backup/users_data.tar.gz -C /data .`
 - `attachments_data`: مشابه بالا.
 
 ری‌استارت سرویس‌ها داده را از بین نمی‌برد (همه در named volume).

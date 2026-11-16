@@ -13,6 +13,7 @@ import Tabs from '@mui/material/Tabs';
 import Tab from '@mui/material/Tab';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import { keysApi } from '@/api/endpoints';
+import { branding } from '@/branding';
 
 // Relay base derived from wherever the app is served — works on localhost and behind
 // the domain/CDN with no hardcoding.
@@ -85,7 +86,7 @@ export default function CliOnboardingPage() {
   return (
     <Box sx={{ p: 3, maxWidth: 860, mx: 'auto' }}>
       <Typography variant="h5" sx={{ mb: 1 }}>
-        اتصال ابزارها به گیت‌وی EcoCode
+        اتصال ابزارها به گیت‌وی {branding.name}
       </Typography>
       <Typography color="text.secondary" sx={{ mb: 3 }}>
         هر ابزارِ سازگار با Anthropic را روی سیستم خودت وصل کن؛ فقط مدل‌کال‌ها از گیت‌وی ما رد می‌شوند

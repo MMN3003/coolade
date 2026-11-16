@@ -10,7 +10,7 @@ from app.db import async_session_factory
 from app.services.quota import run_periodic_reset
 from app.services import learning, reaper
 
-logger = logging.getLogger("ecocode.scheduler")
+logger = logging.getLogger("coolade.scheduler")
 settings = get_settings()
 
 

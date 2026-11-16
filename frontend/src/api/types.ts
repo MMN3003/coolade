@@ -1,5 +1,5 @@
 /**
- * TypeScript types for the EcoCode backend REST contract.
+ * TypeScript types for the Coolade backend REST contract.
  *
  * Source of truth: docs/openapi.json (exported by Dev1's FastAPI backend).
  * Reconciled against it on 2026-08-20 after integration; also validated with
@@ -890,7 +890,7 @@ export interface SetModeRequest {
  * (not `window`) and `reset` (not `reset_at`), which reads slightly
  * differently from §4.5's prose sketch. `limit`/`remaining` are in whatever
  * unit the upstream's `anthropic-ratelimit-*` headers report
- * (tokens/requests/credits — see `unit`), NOT necessarily EcoCode credits,
+ * (tokens/requests/credits — see `unit`), NOT necessarily Coolade credits,
  * so `NumericString` (not `DecimalString`) is used defensively — the parser
  * (endpoints.ts) accepts either a number or a decimal-string on the wire
  * (the DB column is `NUMERIC`, which the JSON encoder may or may not stringify).

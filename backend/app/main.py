@@ -1,4 +1,4 @@
-"""EcoCode Gateway backend — FastAPI app entrypoint."""
+"""Coolade Gateway backend — FastAPI app entrypoint."""
 from __future__ import annotations
 
 import asyncio
@@ -43,7 +43,7 @@ from app.services.turns import mark_interrupted_streaming_as_failed
 from app.upstream import credentials as cli_credentials
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
-logger = logging.getLogger("ecocode")
+logger = logging.getLogger("coolade")
 
 settings = get_settings()
 
@@ -77,7 +77,7 @@ async def lifespan(app: FastAPI):
         task.cancel()
 
 
-app = FastAPI(title="EcoCode Gateway", version="1.4.0", lifespan=lifespan)
+app = FastAPI(title=f"{settings.app_name} Gateway", version="1.4.0", lifespan=lifespan)
 
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
 if origins:

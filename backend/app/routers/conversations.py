@@ -38,7 +38,7 @@ from app.turn_registry import TurnState
 
 router = APIRouter(prefix="/api", tags=["conversations"])
 settings = get_settings()
-logger = logging.getLogger("ecocode.conversations")
+logger = logging.getLogger("coolade.conversations")
 
 
 DEFAULT_TITLE = "گفتگوی جدید"

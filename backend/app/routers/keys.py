@@ -37,7 +37,7 @@ async def create_key(
     await db.commit()
     await db.refresh(api_key)
 
-    # اصلاحیهٔ ۵ / amendment 5: no LiteLLM virtual key is minted anymore — the ecocode
+    # اصلاحیهٔ ۵ / amendment 5: no LiteLLM virtual key is minted anymore — the coolade
     # key is authoritative on its own (auth/ACL/quota are enforced entirely by this
     # backend; inference runs through the Claude Code CLI, not LiteLLM).
 

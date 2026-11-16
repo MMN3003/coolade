@@ -24,7 +24,7 @@ from app.services import thinking as thinking_service
 from app.team_files import team_memory_dir
 from app.team_membership import member_team_rows
 
-logger = logging.getLogger("ecocode.cli_runner")
+logger = logging.getLogger("coolade.cli_runner")
 
 settings = get_settings()
 
@@ -535,7 +535,7 @@ async def run_conversation_turn(
         logger.exception("service sync failed for user %s", user_id)
     # amendment-7 (knowledge layer): user + team rules/knowledge → appended system
     # prompt (rules always; knowledge inline within budget, else spilled to
-    # <ws>/.ecocode/knowledge/*.md with an index). Failure degrades to "no pack".
+    # <ws>/.coolade/knowledge/*.md with an index). Failure degrades to "no pack".
     knowledge_text = await _knowledge_pack(user_id, ws, member_teams)
     # Account 5h reset hint for the actionable upstream-429 message (product-owner
     # follow-up, 2026-08-22) — read once up front; the CLI turn itself has no DB.
@@ -620,7 +620,7 @@ async def _knowledge_pack(
     user_id: int, ws: Path, member_teams: list[tuple[int, str, str]]
 ) -> str | None:
     """amendment-7: compile this user's + teams' rules/knowledge for one turn and
-    materialise any spilled knowledge files under <ws>/.ecocode/knowledge/.
+    materialise any spilled knowledge files under <ws>/.coolade/knowledge/.
     Never raises — a broken pack must not cost the user their turn."""
     try:
         from app.services import knowledge as knowledge_service

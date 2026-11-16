@@ -1,6 +1,6 @@
-# راهنمای استفاده از وب‌سرویس EcoCode
+# راهنمای استفاده از وب‌سرویس Coolade
 
-این راهنما برای کاربرانی است که می‌خواهند با **کلید API شخصی** خود از گیت‌وی EcoCode در ابزارهای برنامه‌نویسی (Cline، Continue، aider و…) یا اسکریپت‌های خودشان استفاده کنند.
+این راهنما برای کاربرانی است که می‌خواهند با **کلید API شخصی** خود از گیت‌وی Coolade در ابزارهای برنامه‌نویسی (Cline، Continue، aider و…) یا اسکریپت‌های خودشان استفاده کنند.
 
 آدرس پایه (داخل شبکه سازمان): `http://<آدرس-سرور>:8085`
 
@@ -8,9 +8,9 @@
 
 ## ۱. ساخت کلید API
 
-1. وارد وب EcoCode شوید (نام کاربری/رمز سازمانی خودتان).
+1. وارد وب Coolade شوید (نام کاربری/رمز سازمانی خودتان).
 2. از منو، **«کلیدهای API»** → **«ساخت کلید جدید»** و یک نام بدهید (مثلاً «Cline لپ‌تاپ»).
-3. کلید (`eco_live_…`) **فقط همین یک‌بار** نمایش داده می‌شود — همان لحظه کپی و در جای امن ذخیره کنید.
+3. کلید (`coolade_live_…`) **فقط همین یک‌بار** نمایش داده می‌شود — همان لحظه کپی و در جای امن ذخیره کنید.
 
 نکته‌ها:
 - می‌توانید چند کلید با نام‌های مختلف داشته باشید و هر کدام را جداگانه باطل کنید.
@@ -26,8 +26,8 @@
 | `GET /v1/models` | OpenAI-style | لیست مدل‌های مجاز شما (auto-discovery) |
 
 احراز هویت با هر دو شکل پذیرفته می‌شود:
-- هدر `x-api-key: eco_live_…` (سبک Anthropic)
-- هدر `Authorization: Bearer eco_live_…` (سبک OpenAI)
+- هدر `x-api-key: coolade_live_…` (سبک Anthropic)
+- هدر `Authorization: Bearer coolade_live_…` (سبک OpenAI)
 
 استریم (SSE) در هر دو endpoint با `"stream": true` پشتیبانی می‌شود.
 
@@ -37,7 +37,7 @@
 
 ```bash
 curl -X POST http://SERVER:8085/v1/messages \
-  -H "x-api-key: eco_live_XXXX" \
+  -H "x-api-key: coolade_live_XXXX" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-sonnet",
@@ -50,7 +50,7 @@ curl -X POST http://SERVER:8085/v1/messages \
 
 ```bash
 curl -N -X POST http://SERVER:8085/v1/chat/completions \
-  -H "Authorization: Bearer eco_live_XXXX" \
+  -H "Authorization: Bearer coolade_live_XXXX" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "claude-haiku",
@@ -64,7 +64,7 @@ curl -N -X POST http://SERVER:8085/v1/chat/completions \
 ```python
 from anthropic import Anthropic
 
-client = Anthropic(base_url="http://SERVER:8085", api_key="eco_live_XXXX")
+client = Anthropic(base_url="http://SERVER:8085", api_key="coolade_live_XXXX")
 msg = client.messages.create(
     model="claude-sonnet",
     max_tokens=1024,
@@ -78,7 +78,7 @@ print(msg.content[0].text)
 ```python
 from openai import OpenAI
 
-client = OpenAI(base_url="http://SERVER:8085/v1", api_key="eco_live_XXXX")
+client = OpenAI(base_url="http://SERVER:8085/v1", api_key="coolade_live_XXXX")
 resp = client.chat.completions.create(
     model="claude-haiku",
     messages=[{"role": "user", "content": "سلام!"}],
@@ -93,7 +93,7 @@ print(resp.choices[0].message.content)
 روش پیشنهادی — provider نوع Anthropic:
 - **API Provider:** Anthropic
 - **Anthropic Base URL:** `http://SERVER:8085`
-- **API Key:** `eco_live_XXXX`
+- **API Key:** `coolade_live_XXXX`
 - **Model:** `claude-sonnet` (یا هر مدل مجاز شما)
 
 روش جایگزین — OpenAI Compatible:
@@ -107,10 +107,10 @@ print(resp.choices[0].message.content)
 ```json
 {
   "models": [{
-    "title": "EcoCode Sonnet",
+    "title": "Coolade Sonnet",
     "provider": "anthropic",
     "apiBase": "http://SERVER:8085",
-    "apiKey": "eco_live_XXXX",
+    "apiKey": "coolade_live_XXXX",
     "model": "claude-sonnet"
   }]
 }
@@ -119,7 +119,7 @@ print(resp.choices[0].message.content)
 ### aider
 
 ```bash
-export ANTHROPIC_API_KEY=eco_live_XXXX
+export ANTHROPIC_API_KEY=coolade_live_XXXX
 export ANTHROPIC_BASE_URL=http://SERVER:8085
 aider --model claude-sonnet
 ```

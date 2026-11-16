@@ -1,13 +1,13 @@
-name: ecocode
+name: ${APP_SLUG:-coolade}
 
 networks:
-  ecocode_net:
+  coolade_net:
     driver: bridge
   # اصلاحیهٔ ۶ / amendment 6 — Stage 2: internal-only network for sandbox containers.
   # `internal: true` = NO direct route to the internet; the sandbox's only egress is
-  # the `egress` allowlist proxy (which is attached to BOTH this net and ecocode_net).
-  ecocode_sandbox_net:
-    name: ecocode_sandbox_net
+  # the `egress` allowlist proxy (which is attached to BOTH this net and coolade_net).
+  coolade_sandbox_net:
+    name: ${APP_SLUG:-coolade}_sandbox_net
     internal: true
 
 volumes:
@@ -36,7 +36,7 @@ services:
       - ./postgres/init-multi-db.sh:/docker-entrypoint-initdb.d/01-init-multi-db.sh:ro
     expose:
       - "5432"
-    networks: [ecocode_net]
+    networks: [coolade_net]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -60,7 +60,7 @@ services:
       UPSTREAM_TARGET: ${UPSTREAM_BASE_URL:-https://api.anthropic.com}
     expose:
       - "8788"
-    networks: [ecocode_net]
+    networks: [coolade_net]
     profiles: ["compression"]
 
   # اصلاحیهٔ ۶ / amendment 6 — Stage 2: egress allowlist proxy. The ONLY route to the
@@ -73,7 +73,7 @@ services:
       network: host
     environment:
       ALLOW_HOSTS: ${SANDBOX_ALLOW_HOSTS:-api.anthropic.com,git.ecobin.ir,.vscode-cdn.net,open-vsx.org,.open-vsx.org}
-    networks: [ecocode_sandbox_net, ecocode_net]
+    networks: [coolade_sandbox_net, coolade_net]
     profiles: ["sandbox", "ide"]
 
   # اصلاحیهٔ ۶ / amendment 6 — code-server (real VS Code in the browser). Runs on the
@@ -84,7 +84,7 @@ services:
     image: codercom/code-server:latest
     command: ["--bind-addr", "0.0.0.0:8080", "--disable-telemetry", "--disable-update-check", "/data/users"]
     environment:
-      PASSWORD: ${CODE_SERVER_PASSWORD:-ecocode-ide}
+      PASSWORD: ${CODE_SERVER_PASSWORD:-coolade-ide}
       HTTPS_PROXY: http://egress:8080
       HTTP_PROXY: http://egress:8080
       NO_PROXY: localhost,127.0.0.1
@@ -93,7 +93,7 @@ services:
     # Isolation still holds: internal-only network + egress allowlist, no creds/DB.)
     volumes:
       - users_data:/data/users
-    networks: [ecocode_sandbox_net]
+    networks: [coolade_sandbox_net]
     mem_limit: 2g
     pids_limit: 512
     profiles: ["ide"]
@@ -105,7 +105,9 @@ services:
       args:
         INSTALL_DOCKER_CLI: ${INSTALL_DOCKER_CLI:-1}
     environment:
-      ECOCODE_ENV: ${ECOCODE_ENV}
+      APP_NAME: ${APP_NAME:-Coolade}
+      APP_SLUG: ${APP_SLUG:-coolade}
+      COOLADE_ENV: ${COOLADE_ENV}
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       UPSTREAM_MODE: ${UPSTREAM_MODE}
       UPSTREAM_BASE_URL: ${UPSTREAM_BASE_URL}
@@ -118,14 +120,14 @@ services:
       THINKING_MAX_LEVEL: ${THINKING_MAX_LEVEL}
       # اصلاحیهٔ ۶ / amendment 6 — Stage 2 sandbox (OFF by default)
       SANDBOX_ENABLED: ${SANDBOX_ENABLED:-0}
-      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-ecocode-runner:latest}
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-coolade-runner:latest}
       EGRESS_PROXY_URL: ${EGRESS_PROXY_URL:-http://egress:8080}
       GIT_REMOTE_BASE: ${GIT_REMOTE_BASE:-}
       MOCK_UPSTREAM_BASE: ${MOCK_UPSTREAM_BASE}
-      ECOCODE_SECRET_KEY: ${ECOCODE_SECRET_KEY}
+      COOLADE_SECRET_KEY: ${COOLADE_SECRET_KEY}
       SESSION_SECRET: ${SESSION_SECRET}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      ECOCODE_DATABASE_URL: ${ECOCODE_DATABASE_URL}
+      COOLADE_DATABASE_URL: ${COOLADE_DATABASE_URL}
       # LITELLM_MASTER_KEY is retained only as the shared bearer for backend's own
       # /internal/* endpoints (app/internal.py) — no LiteLLM service exists anymore.
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
@@ -141,7 +143,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL}
       # v2 — persistent workspace orchestration (TECH-V2 §2/§6)
       WORKSPACE_IMAGE: ${WORKSPACE_IMAGE:-eco-ide-spike-code-server:latest}
-      WORKSPACE_NETWORK: ${WORKSPACE_NETWORK:-ecocode_sandbox_net}
+      WORKSPACE_NETWORK: ${WORKSPACE_NETWORK:-${APP_SLUG:-coolade}_sandbox_net}
       WORKSPACE_IDLE_MINUTES: ${WORKSPACE_IDLE_MINUTES:-30}
       WORKSPACE_MAX_RUNNING: ${WORKSPACE_MAX_RUNNING:-4}
       WORKSPACE_UPSTREAM_BASE_URL: ${WORKSPACE_UPSTREAM_BASE_URL:-}
@@ -162,7 +164,7 @@ services:
     expose:
       - "8000"
     # on both nets so workspace containers (internal net) can reach the backend relay.
-    networks: [ecocode_net, ecocode_sandbox_net]
+    networks: [coolade_net, coolade_sandbox_net]
     depends_on:
       postgres:
         condition: service_healthy
@@ -179,7 +181,7 @@ services:
       network: host
     expose:
       - "8080"
-    networks: [ecocode_net]
+    networks: [coolade_net]
     profiles: ["dev"]
     healthcheck:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health')\" || exit 1"]
@@ -195,7 +197,7 @@ services:
     restart: "no"
     volumes:
       - frontend_static:/static
-    networks: [ecocode_net]
+    networks: [coolade_net]
 
   nginx:
     build: ./nginx
@@ -207,8 +209,8 @@ services:
     volumes:
       - frontend_static:/usr/share/nginx/html
       # - ./certs:/etc/nginx/certs:ro
-    # ecocode_sandbox_net lets nginx reach the internal-only code-server container.
-    networks: [ecocode_net, ecocode_sandbox_net]
+    # coolade_sandbox_net lets nginx reach the internal-only code-server container.
+    networks: [coolade_net, coolade_sandbox_net]
     depends_on:
       backend:
         condition: service_started

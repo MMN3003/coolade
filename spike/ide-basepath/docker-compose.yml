@@ -50,4 +50,4 @@ networks:
 volumes:
   claude_state:
     external: true
-    name: ecocode_claude_state
+    name: coolade_claude_state

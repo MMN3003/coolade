@@ -15,6 +15,7 @@ import '@fontsource/vazirmatn/700.css';
 import 'highlight.js/styles/github-dark.css';
 
 import './i18n';
+import { loadBranding } from './branding';
 import { rtlCache } from './theme/rtlCache';
 import { makeTheme } from './theme/theme';
 import { useUiStore } from './store/uiStore';
@@ -32,7 +33,7 @@ const queryClient = new QueryClient({
 
 /**
  * Root wrapper: rebuilds the MUI theme whenever the persisted theme mode
- * changes (uiStore, localStorage key `ecocode.theme`). The RTL emotion cache is
+ * changes (uiStore, localStorage key `coolade.theme`). The RTL emotion cache is
  * mode-independent, so it stays fixed while only the ThemeProvider swaps.
  */
 function Root() {
@@ -53,8 +54,10 @@ function Root() {
   );
 }
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <Root />
-  </React.StrictMode>
-);
+void loadBranding().finally(() => {
+  ReactDOM.createRoot(document.getElementById('root')!).render(
+    <React.StrictMode>
+      <Root />
+    </React.StrictMode>
+  );
+});
