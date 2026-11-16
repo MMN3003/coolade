@@ -179,6 +179,20 @@ def _write_container_creds_file(
     if refresh_token:
         node["refreshToken"] = refresh_token
     node["expiresAt"] = int(expires_at.timestamp() * 1000)
+    # Claude Code (2.1.x) treats an OAuth entry without "scopes" (user:inference) as
+    # "Not logged in". Carry the account metadata over from the host file when we
+    # have it, and fall back to the scopes a subscription login always grants.
+    host_node: dict[str, Any] = {}
+    try:
+        host_raw = json.loads(_host_creds_path().read_text())
+        if isinstance(host_raw, dict) and isinstance(host_raw.get("claudeAiOauth"), dict):
+            host_node = host_raw["claudeAiOauth"]
+    except (OSError, json.JSONDecodeError):
+        host_node = {}
+    for key in ("scopes", "subscriptionType", "rateLimitTier"):
+        if key not in node and key in host_node:
+            node[key] = host_node[key]
+    node.setdefault("scopes", ["user:inference", "user:profile"])
     existing["claudeAiOauth"] = node
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(existing))
@@ -292,6 +306,17 @@ async def startup_rehydrate() -> None:
                 await db.commit()
 
         await maybe_seed_from_host(db)
+
+    # Repair files written by older builds without "scopes" (CLI reports "Not logged in").
+    try:
+        node = json.loads(_container_creds_path().read_text()).get("claudeAiOauth") or {}
+    except (OSError, json.JSONDecodeError, AttributeError):
+        node = {}
+    current = read_credentials()
+    if current and "scopes" not in node:
+        _write_container_creds_file(
+            current["access_token"], current.get("refresh_token"), current.get("expires_at") or _assume_expiry()
+        )
 
 
 # ============================== seed-on-change from host ==============================
