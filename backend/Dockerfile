@@ -11,14 +11,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && npm install -g @anthropic-ai/claude-code \
-    # v2 — docker CLI so the backend can orchestrate workspace containers (TECH-V2 §6).
-    && install -m 0755 -d /etc/apt/keyrings \
-    && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
-    && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
     && apt-get purge -y gnupg \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
+
+# v2 — docker CLI so the backend can orchestrate workspace containers (TECH-V2 §6).
+# Only needed for VS Code workspaces / sandbox. Build with INSTALL_DOCKER_CLI=0 to skip it
+# (smaller image, and no dependency on download.docker.com being reachable).
+ARG INSTALL_DOCKER_CLI=1
+RUN if [ "$INSTALL_DOCKER_CLI" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends gnupg \
+        && install -m 0755 -d /etc/apt/keyrings \
+        && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
+        && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list \
+        && apt-get update && apt-get install -y --no-install-recommends docker-ce-cli \
+        && apt-get purge -y gnupg && apt-get autoremove -y \
+        && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 RUN useradd --create-home --home-dir /home/app --uid 1000 --shell /bin/bash app
 

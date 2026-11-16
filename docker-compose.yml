@@ -102,6 +102,8 @@ services:
     build:
       context: ./backend
       network: host
+      args:
+        INSTALL_DOCKER_CLI: ${INSTALL_DOCKER_CLI:-1}
     environment:
       ECOCODE_ENV: ${ECOCODE_ENV}
       UPSTREAM_MODE: ${UPSTREAM_MODE}
