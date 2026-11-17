@@ -14,6 +14,7 @@ import Tab from '@mui/material/Tab';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import { keysApi } from '@/api/endpoints';
 import { branding } from '@/branding';
+import { copyText } from '@/utils/clipboard';
 
 // Relay base derived from wherever the app is served — works on localhost and behind
 // the domain/CDN with no hardcoding.
@@ -24,7 +25,8 @@ function relayBase(): string {
 function CodeBlock({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });

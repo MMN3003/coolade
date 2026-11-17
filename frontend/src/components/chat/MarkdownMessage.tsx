@@ -8,6 +8,7 @@ import Tooltip from '@mui/material/Tooltip';
 import ContentCopyIcon from '@mui/icons-material/ContentCopyOutlined';
 import CheckIcon from '@mui/icons-material/Check';
 import { useTranslation } from 'react-i18next';
+import { copyText } from '@/utils/clipboard';
 
 function CodeBlock(props: ComponentPropsWithoutRef<'pre'>) {
   const { t } = useTranslation();
@@ -16,7 +17,8 @@ function CodeBlock(props: ComponentPropsWithoutRef<'pre'>) {
 
   function handleCopy() {
     const text = preRef.current?.textContent ?? '';
-    navigator.clipboard.writeText(text).then(() => {
+    void copyText(text).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
@@ -26,7 +28,9 @@ function CodeBlock(props: ComponentPropsWithoutRef<'pre'>) {
     <Box
       sx={{
         position: 'relative',
-        '&:hover .copy-code-btn': { opacity: 1 },
+        '&:hover .copy-code-btn, & .copy-code-btn:focus-visible': { opacity: 1 },
+        // Touch screens have no hover — keep the button visible there.
+        '@media (hover: none)': { '& .copy-code-btn': { opacity: 1 } },
         direction: 'ltr',
         my: 1,
       }}
