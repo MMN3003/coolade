@@ -229,3 +229,5 @@ Admin → **اتصال آپ‌استریم** shows disconnected. Run `claude` an
 | `413 Request Entity Too Large` on upload | `client_max_body_size 60m` missing in the host nginx. |
 | `backend` restarts in a loop | `docker compose logs backend`. Check the `.env` values, the DB password (changing `POSTGRES_PASSWORD` after first start needs the DB user's password changed too), and that `CLAUDE_CREDS_DIR` exists. |
 | Claude Code on a laptop hangs | A `~/.claude/settings.json` `env` block on the laptop overrides `ANTHROPIC_BASE_URL`. Remove it. |
+| Claude Code on a laptop shows «Select login method» | The laptop uses `ANTHROPIC_API_KEY` instead of `ANTHROPIC_AUTH_TOKEN`, the variable isn't exported in the shell rc file, or the first-run screen isn't marked done. See `docs/API-GUIDE.md` (or the in-app **اتصال CLI** page) for per-OS steps: macOS, Ubuntu, Windows, WSL. |
+| `404`/`405` from a client | Its base URL is missing `/relay` or uses the removed `/v1` endpoints. Use `https://YOUR.DOMAIN/relay`. |

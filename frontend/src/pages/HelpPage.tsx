@@ -23,7 +23,10 @@ export default function HelpPage() {
       </Typography>
       <Paper variant="outlined" sx={{ p: { xs: 2, md: 3 } }}>
         <Box sx={{ '& pre': { overflowX: 'auto' }, '& table': { display: 'block', overflowX: 'auto' } }}>
-          <MarkdownMessage content={applyBranding(API_GUIDE_FA)} />
+          {/* Show the real server address instead of the SERVER:8085 placeholder. */}
+          <MarkdownMessage
+            content={applyBranding(API_GUIDE_FA).split('http://SERVER:8085').join(window.location.origin)}
+          />
         </Box>
       </Paper>
     </Container>

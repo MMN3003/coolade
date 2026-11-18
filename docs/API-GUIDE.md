@@ -1,154 +1,226 @@
-# راهنمای استفاده از وب‌سرویس Coolade
+# راهنمای اتصال ابزارها به Coolade
 
-این راهنما برای کاربرانی است که می‌خواهند با **کلید API شخصی** خود از گیت‌وی Coolade در ابزارهای برنامه‌نویسی (Cline، Continue، aider و…) یا اسکریپت‌های خودشان استفاده کنند.
+این راهنما برای کاربرانی است که می‌خواهند با **کلید شخصی** خود، Claude Code (ترمینال یا VS Code)، Cline، Continue، aider یا اسکریپت‌های خودشان را به گیت‌وی Coolade وصل کنند. کد و فایل‌ها روی سیستم خودتان می‌مانند؛ فقط درخواست‌های مدل از گیت‌وی رد می‌شوند.
 
-آدرس پایه (داخل شبکه سازمان): `http://<آدرس-سرور>:8085`
+**آدرس relay:** همان آدرسی که وب را با آن باز می‌کنید + `/relay`، مثلاً `http://SERVER:8085/relay`. در همهٔ نمونه‌ها `SERVER:8085` را با آدرس واقعی جایگزین کنید.
+
+> ⚠️ آدرس‌های قدیمی `http://SERVER:8085/v1/...` و `/v1/chat/completions` (سبک OpenAI) **حذف شده‌اند**. فقط `/relay/v1/...` (سبک Anthropic) کار می‌کند.
 
 ---
 
-## ۱. ساخت کلید API
+## ۱. ساخت کلید
 
-1. وارد وب Coolade شوید (نام کاربری/رمز سازمانی خودتان).
-2. از منو، **«کلیدهای API»** → **«ساخت کلید جدید»** و یک نام بدهید (مثلاً «Cline لپ‌تاپ»).
-3. کلید (`coolade_live_…`) **فقط همین یک‌بار** نمایش داده می‌شود — همان لحظه کپی و در جای امن ذخیره کنید.
+1. وارد وب Coolade شوید → **«اتصال CLI»** یا **«کلیدهای API»** → **«ساخت کلید»**.
+2. کلید (`coolade_live_…`) **فقط همان یک‌بار** نمایش داده می‌شود؛ همان لحظه کپی کنید.
 
-نکته‌ها:
-- می‌توانید چند کلید با نام‌های مختلف داشته باشید و هر کدام را جداگانه باطل کنید.
-- مصرف همه کلیدهای شما از **سهمیه خود شما** کم می‌شود و در صفحه «مصرف من» با تفکیک هر کلید دیده می‌شود.
-- کلید فقط به مدل‌هایی دسترسی دارد که ادمین برای شما مجاز کرده است.
+- می‌توانید چند کلید بسازید و هرکدام را جداگانه باطل کنید.
+- مصرف همهٔ کلیدها از **سهمیهٔ خودتان** کم می‌شود و در «مصرف من» دیده می‌شود.
 
-## ۲. Endpoint ها
+## ۲. سه قانون مهم (علت بیشتر خطاهای اتصال)
 
-| Endpoint | سبک | توضیح |
+| درست ✅ | غلط ❌ | نتیجهٔ غلط |
 |---|---|---|
-| `POST /v1/messages` | Anthropic Messages API | برای ابزارهایی که provider نوع Anthropic دارند |
-| `POST /v1/chat/completions` | OpenAI Chat Completions | برای ابزارها/کتابخانه‌های OpenAI-سازگار |
-| `GET /v1/models` | OpenAI-style | لیست مدل‌های مجاز شما (auto-discovery) |
+| `ANTHROPIC_AUTH_TOKEN` | `ANTHROPIC_API_KEY` | Claude Code منوی «Select login method» را نشان می‌دهد یا دربارهٔ کلید سؤال می‌پرسد |
+| `ANTHROPIC_BASE_URL=http://SERVER:8085/relay` | بدون `/relay` یا با `/relay/v1` | خطای 404 یا 405 |
+| متغیرها در فایل شل **با `export`** (یا `setx` در ویندوز) | فقط تایپ در یک ترمینال، یا بدون `export` | در ترمینال جدید کار نمی‌کند |
 
-احراز هویت با هر دو شکل پذیرفته می‌شود:
-- هدر `x-api-key: coolade_live_…` (سبک Anthropic)
-- هدر `Authorization: Bearer coolade_live_…` (سبک OpenAI)
+همچنین اگر در `~/.claude/settings.json` بخش `"env"` با کلیدهای `ANTHROPIC_*` دارید، **حذفش کنید**؛ مقدار آن بر متغیرهای شل غلبه می‌کند.
 
-استریم (SSE) در هر دو endpoint با `"stream": true` پشتیبانی می‌شود.
+## ۳. Claude Code — بر اساس سیستم‌عامل
 
-## ۳. نمونه‌ها
+### macOS (zsh)
 
-### curl — سبک Anthropic
+```zsh
+# ۱) نصب (یک‌بار)
+curl -fsSL https://claude.ai/install.sh | bash
+
+# ۲) بررسی تنظیمات قبلی (اگر خطی پیدا شد، از همان فایل پاکش کنید)
+grep -n ANTHROPIC ~/.zshrc ~/.zprofile ~/.zshenv ~/.claude/settings.json 2>/dev/null
+
+# ۳) ذخیرهٔ دائمی
+cat >> ~/.zshrc <<'EOF'
+export ANTHROPIC_BASE_URL="http://SERVER:8085/relay"
+export ANTHROPIC_AUTH_TOKEN="coolade_live_XXXX"
+EOF
+unset ANTHROPIC_API_KEY
+source ~/.zshrc
+
+# ۴) تست
+env | grep ANTHROPIC
+claude -p "سلام"
+```
+
+اگر قبلاً `ANTHROPIC_API_KEY` گذاشته بودید، با این دستور به `AUTH_TOKEN` تبدیلش کنید:
+
+```zsh
+sed -i '' 's/ANTHROPIC_API_KEY=/ANTHROPIC_AUTH_TOKEN=/' ~/.zshrc && unset ANTHROPIC_API_KEY && source ~/.zshrc
+```
+
+### Linux (Ubuntu، bash)
 
 ```bash
-curl -X POST http://SERVER:8085/v1/messages \
-  -H "x-api-key: coolade_live_XXXX" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-sonnet",
-    "max_tokens": 1024,
-    "messages": [{"role": "user", "content": "سلام!"}]
-  }'
+# ۱) نصب (یک‌بار)
+curl -fsSL https://claude.ai/install.sh | bash
+# یا: npm install -g @anthropic-ai/claude-code   (Node 18 یا جدیدتر)
+
+# ۲) بررسی تنظیمات قبلی
+grep -n ANTHROPIC ~/.bashrc ~/.profile ~/.bash_profile ~/.claude/settings.json 2>/dev/null
+
+# ۳) ذخیرهٔ دائمی
+cat >> ~/.bashrc <<'EOF'
+export ANTHROPIC_BASE_URL="http://SERVER:8085/relay"
+export ANTHROPIC_AUTH_TOKEN="coolade_live_XXXX"
+EOF
+unset ANTHROPIC_API_KEY
+source ~/.bashrc
+
+# ۴) تست
+env | grep ANTHROPIC
+claude -p "سلام"
 ```
 
-### curl — سبک OpenAI (با استریم)
+تبدیل `API_KEY` قدیمی:
 
 ```bash
-curl -N -X POST http://SERVER:8085/v1/chat/completions \
-  -H "Authorization: Bearer coolade_live_XXXX" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "claude-haiku",
-    "stream": true,
-    "messages": [{"role": "user", "content": "سلام!"}]
-  }'
+sed -i 's/ANTHROPIC_API_KEY=/ANTHROPIC_AUTH_TOKEN=/' ~/.bashrc && unset ANTHROPIC_API_KEY && source ~/.bashrc
 ```
 
-### Python — کتابخانه رسمی anthropic
+### Windows (PowerShell، بدون WSL)
 
-```python
-from anthropic import Anthropic
+پیش‌نیاز: [Git for Windows](https://git-scm.com/download/win) (Claude Code در ویندوز از Git Bash استفاده می‌کند).
 
-client = Anthropic(base_url="http://SERVER:8085", api_key="coolade_live_XXXX")
-msg = client.messages.create(
-    model="claude-sonnet",
-    max_tokens=1024,
-    messages=[{"role": "user", "content": "سلام!"}],
-)
-print(msg.content[0].text)
+```powershell
+# ۱) نصب (یک‌بار)
+irm https://claude.ai/install.ps1 | iex
+
+# ۲) بررسی تنظیمات قبلی
+Get-ChildItem Env:ANTHROPIC*
+Select-String -Path "$HOME\.claude\settings.json" -Pattern ANTHROPIC -ErrorAction SilentlyContinue
+
+# ۳) ذخیرهٔ دائمی (برای کاربر جاری) + حذف API_KEY قدیمی
+setx ANTHROPIC_BASE_URL "http://SERVER:8085/relay"
+setx ANTHROPIC_AUTH_TOKEN "coolade_live_XXXX"
+[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "User")
 ```
 
-### Python — کتابخانه openai
+**مهم:** `setx` فقط روی پنجره‌های **جدید** اثر دارد. همهٔ ترمینال‌ها و VS Code را ببندید و یک PowerShell تازه باز کنید:
 
-```python
-from openai import OpenAI
-
-client = OpenAI(base_url="http://SERVER:8085/v1", api_key="coolade_live_XXXX")
-resp = client.chat.completions.create(
-    model="claude-haiku",
-    messages=[{"role": "user", "content": "سلام!"}],
-)
-print(resp.choices[0].message.content)
+```powershell
+# ۴) تست
+Get-ChildItem Env:ANTHROPIC*
+claude -p "سلام"
 ```
 
-## ۴. تنظیم ابزارها
+(در CMD هم همان دستورهای `setx` کار می‌کنند؛ برای دیدن مقدار: `echo %ANTHROPIC_BASE_URL%`.)
 
-### Cline (VS Code)
+### Windows + WSL (Ubuntu داخل ویندوز)
 
-روش پیشنهادی — provider نوع Anthropic:
-- **API Provider:** Anthropic
-- **Anthropic Base URL:** `http://SERVER:8085`
-- **API Key:** `coolade_live_XXXX`
-- **Model:** `claude-sonnet` (یا هر مدل مجاز شما)
+داخل WSL، **همه‌چیز مثل Linux است**؛ متغیرهای ویندوز (`setx`) به WSL منتقل **نمی‌شوند** و برعکس.
 
-روش جایگزین — OpenAI Compatible:
-- **API Provider:** OpenAI Compatible
-- **Base URL:** `http://SERVER:8085/v1`
-- **API Key / Model:** مثل بالا
+```bash
+# داخل ترمینال WSL:
+# ۱) نصب نسخهٔ Linux (نه نسخهٔ ویندوز)
+curl -fsSL https://claude.ai/install.sh | bash
+which claude        # باید مسیر لینوکسی باشد (مثل ~/.local/bin/claude)، نه /mnt/c/...
 
-### Continue
+# ۲) و ۳) دقیقاً مثل بخش Linux: export در ~/.bashrc (یا ~/.zshrc اگر zsh دارید)
+cat >> ~/.bashrc <<'EOF'
+export ANTHROPIC_BASE_URL="http://SERVER:8085/relay"
+export ANTHROPIC_AUTH_TOKEN="coolade_live_XXXX"
+EOF
+source ~/.bashrc
 
-در `config.json`:
+# ۴) تست اتصال شبکه از داخل WSL، بعد خود Claude
+curl -s http://SERVER:8085/relay/v1/models -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" | head -c 300
+claude -p "سلام"
+```
+
+- اگر `which claude` به `/mnt/c/...` اشاره می‌کند، نسخهٔ ویندوزی جلوتر در PATH است؛ نسخهٔ لینوکسی را نصب کنید یا PATH را اصلاح کنید.
+- اگر `curl` بالا از WSL به سرور نمی‌رسد ولی از ویندوز می‌رسد، مشکل شبکهٔ WSL است (VPN یا فایروال). در `%UserProfile%\.wslconfig` بنویسید `[wsl2]` و `networkingMode=mirrored`، سپس `wsl --shutdown` بزنید.
+
+## ۴. اگر هنوز منوی «Select login method» می‌آید
+
+این منو یعنی Claude Code توکن را نمی‌بیند یا تنظیمات اولیه‌اش (onboarding) هنوز ثبت نشده است. به‌ترتیب بررسی کنید:
+
+1. `env | grep ANTHROPIC` (در ویندوز: `Get-ChildItem Env:ANTHROPIC*`) باید **فقط** `ANTHROPIC_AUTH_TOKEN` و `ANTHROPIC_BASE_URL` را نشان دهد. اگر `ANTHROPIC_API_KEY` هم هست، حذفش کنید.
+2. `claude -p "سلام"` را بزنید. اگر جواب داد، اتصال درست است و فقط صفحهٔ اول اجرا باقی مانده. با این دستور ثبتش کنید:
+
+   macOS / Linux / WSL:
+   ```bash
+   python3 - <<'EOF'
+   import json, os
+   p = os.path.expanduser('~/.claude.json')
+   d = json.load(open(p)) if os.path.exists(p) else {}
+   d['hasCompletedOnboarding'] = True
+   json.dump(d, open(p, 'w'), indent=2)
+   EOF
+   ```
+
+   Windows (PowerShell):
+   ```powershell
+   $p = "$HOME\.claude.json"
+   $j = if (Test-Path $p) { Get-Content $p -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }
+   $j | Add-Member -Force -NotePropertyName hasCompletedOnboarding -NotePropertyValue $true
+   $j | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8 $p
+   ```
+3. اگر قبلاً با حساب claude.ai وارد شده بودید، یک‌بار `claude` را باز کنید، `/logout` بزنید و دوباره اجرا کنید.
+4. بخش `"env"` در `~/.claude/settings.json` (ویندوز: `%USERPROFILE%\.claude\settings.json`) را بررسی کنید.
+
+## ۵. ابزارهای دیگر
+
+همهٔ ابزارهای سازگار با **Anthropic Messages API** با این دو مقدار کار می‌کنند:
+
+- **Base URL:** `http://SERVER:8085/relay`
+- **API Key:** `coolade_live_XXXX` (با هدر `x-api-key` یا `Authorization: Bearer`)
+
+**Cline:** API Provider = Anthropic، کلید را وارد کنید، «Use custom base URL» را تیک بزنید و Base URL بالا را بگذارید.
+
+**Continue** (`config.json`):
 ```json
 {
   "models": [{
     "title": "Coolade Sonnet",
     "provider": "anthropic",
-    "apiBase": "http://SERVER:8085",
+    "apiBase": "http://SERVER:8085/relay/v1/",
     "apiKey": "coolade_live_XXXX",
     "model": "claude-sonnet"
   }]
 }
 ```
 
-### aider
-
+**aider:**
 ```bash
-export ANTHROPIC_API_KEY=coolade_live_XXXX
-export ANTHROPIC_BASE_URL=http://SERVER:8085
-aider --model claude-sonnet
+export ANTHROPIC_API_KEY=coolade_live_XXXX      # aider (برخلاف Claude Code) همین نام را می‌خواهد
+export ANTHROPIC_BASE_URL=http://SERVER:8085/relay
+aider --model anthropic/claude-sonnet
 ```
 
-## ۵. نام مدل‌ها
+**curl:**
+```bash
+curl http://SERVER:8085/relay/v1/messages \
+  -H "x-api-key: coolade_live_XXXX" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "claude-sonnet", "max_tokens": 512, "messages": [{"role": "user", "content": "سلام!"}]}'
+```
 
-از **کلید داخلی** مدل‌ها استفاده کنید، نه نام‌های رسمی Anthropic:
+مسیرهای فقط-OpenAI (`/chat/completions`) پشتیبانی **نمی‌شوند**.
 
-| کلید مدل | توضیح |
-|---|---|
-| `claude-opus` | قوی‌ترین — مصرف امتیاز بالا |
-| `claude-sonnet` | تعادل کیفیت/مصرف |
-| `claude-haiku` | سریع و کم‌مصرف |
+## ۶. نام مدل‌ها
 
-لیست دقیق مدل‌های مجاز *شما* را از `GET /v1/models` بگیرید. (ادمین ممکن است دسترسی شما را محدود کرده باشد.)
+لیست مدل‌های مجاز **شما**: `GET http://SERVER:8085/relay/v1/models` (با همان کلید). هم کلید داخلی (مثل `claude-sonnet`) و هم شناسهٔ رسمی مدل پذیرفته می‌شود. ادمین ممکن است دسترسی شما را محدود کرده باشد.
 
-## ۶. خطاها
+## ۷. خطاها
 
-| کد | معنی | چه کنیم |
+| نشانه | علت | راه‌حل |
 |---|---|---|
+| منوی «Select login method» | `API_KEY` به‌جای `AUTH_TOKEN`، یا توکن در این ترمینال دیده نمی‌شود | بخش ۲ و ۴ |
+| `404` / `405` | Base URL بدون `/relay` یا آدرس قدیمی `/v1` | `ANTHROPIC_BASE_URL=http://SERVER:8085/relay` |
 | `401` | کلید نامعتبر یا باطل‌شده | کلید جدید بسازید |
-| `403 model_not_allowed` | مدل برای شما مجاز نیست | از مدل مجاز استفاده کنید یا از ادمین بخواهید |
-| `429 quota_exceeded` | سهمیه دوره شما تمام شده | تا شروع دوره بعد صبر کنید یا از ادمین سهمیه موقت بگیرید |
-| `429 upstream_rate_limited` | سرویس بالادستی موقتاً شلوغ است | کمی بعد دوباره تلاش کنید |
+| `403 model_not_allowed` | مدل برای شما مجاز نیست | مدل مجاز انتخاب کنید یا از ادمین بخواهید |
+| `429 quota_exceeded` | سهمیهٔ دوره تمام شده | تا دورهٔ بعد صبر کنید یا از ادمین سهمیه بگیرید |
+| Claude Code معطل می‌ماند | بخش `env` در `~/.claude/settings.json` آدرس را عوض می‌کند، یا شبکه به سرور نمی‌رسد | آن بخش را حذف کنید؛ با `curl` بخش WSL اتصال را تست کنید |
 
-بدنه خطاها به شکل `{"error": {"code": "...", "message": "پیام فارسی"}}` است.
+## ۸. سقف مصرف
 
-## ۷. سقف مصرف
-
-- مصرف بر اساس «امتیاز» محاسبه می‌شود: توکن ورودی/خروجی × ضریب مدل (Opus گران‌تر از Sonnet، Sonnet گران‌تر از Haiku).
-- وضعیت لحظه‌ای را در صفحه **«مصرف من»** ببینید؛ در ۸۰٪ سهمیه هشدار نمایش داده می‌شود.
-- بعد از اتمام سهمیه، درخواست‌ها تا شروع دوره بعدی (پیش‌فرض: هفتگی) با `429` رد می‌شوند.
+مصرف بر اساس «امتیاز» است: توکن ورودی/خروجی × ضریب مدل. وضعیت را در **«مصرف من»** ببینید؛ در ۸۰٪ سهمیه هشدار می‌گیرید و پس از اتمام، درخواست‌ها تا دورهٔ بعد با `429` رد می‌شوند.
