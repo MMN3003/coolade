@@ -57,10 +57,126 @@ function CodeBlock({ text }: { text: string }) {
   );
 }
 
+type OsKey = 'mac' | 'linux' | 'win' | 'wsl';
+interface OsGuide {
+  note?: string;
+  steps: { title: string; code: string }[];
+}
+
+function detectOs(): OsKey {
+  const ua = navigator.userAgent;
+  if (/Windows/i.test(ua)) return 'win';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'mac';
+  return 'linux';
+}
+
+function unixSteps(rc: string, checkFiles: string, sedInPlace: string, base: string, k: string) {
+  return [
+    {
+      title: '۲) بررسی تنظیمات قبلی (اگر خطی پیدا شد، از همان فایل پاکش کن):',
+      code: `grep -n ANTHROPIC ${checkFiles} ~/.claude/settings.json 2>/dev/null`,
+    },
+    {
+      title: `۳) ذخیرهٔ دائمی در ${rc}:`,
+      code:
+        `cat >> ${rc} <<'EOF'\n` +
+        `export ANTHROPIC_BASE_URL="${base}"\n` +
+        `export ANTHROPIC_AUTH_TOKEN="${k}"\n` +
+        `EOF\nunset ANTHROPIC_API_KEY\nsource ${rc}`,
+    },
+    {
+      title: '۴) تست:',
+      code: 'env | grep ANTHROPIC\nclaude -p "سلام"',
+    },
+    {
+      title: 'اگر قبلاً ANTHROPIC_API_KEY گذاشته بودی، تبدیلش کن:',
+      code: `sed ${sedInPlace} 's/ANTHROPIC_API_KEY=/ANTHROPIC_AUTH_TOKEN=/' ${rc} && unset ANTHROPIC_API_KEY && source ${rc}`,
+    },
+  ];
+}
+
+const INSTALL_UNIX = 'curl -fsSL https://claude.ai/install.sh | bash';
+
+function osSteps(base: string, k: string): Record<OsKey, OsGuide> {
+  return {
+    mac: {
+      steps: [
+        { title: '۱) نصب (یک‌بار):', code: INSTALL_UNIX },
+        ...unixSteps('~/.zshrc', '~/.zshrc ~/.zprofile ~/.zshenv', "-i ''", base, k),
+      ],
+    },
+    linux: {
+      steps: [
+        { title: '۱) نصب (یک‌بار) — یا: npm install -g @anthropic-ai/claude-code', code: INSTALL_UNIX },
+        ...unixSteps('~/.bashrc', '~/.bashrc ~/.profile ~/.bash_profile', '-i', base, k),
+      ],
+    },
+    win: {
+      note: 'پیش‌نیاز: Git for Windows. دستورها را در PowerShell اجرا کن.',
+      steps: [
+        { title: '۱) نصب (یک‌بار):', code: 'irm https://claude.ai/install.ps1 | iex' },
+        {
+          title: '۲) بررسی تنظیمات قبلی:',
+          code:
+            'Get-ChildItem Env:ANTHROPIC*\n' +
+            'Select-String -Path "$HOME\\.claude\\settings.json" -Pattern ANTHROPIC -ErrorAction SilentlyContinue',
+        },
+        {
+          title: '۳) ذخیرهٔ دائمی + حذف API_KEY قدیمی:',
+          code:
+            `setx ANTHROPIC_BASE_URL "${base}"\n` +
+            `setx ANTHROPIC_AUTH_TOKEN "${k}"\n` +
+            '[Environment]::SetEnvironmentVariable("ANTHROPIC_API_KEY", $null, "User")',
+        },
+        {
+          title: '۴) همهٔ ترمینال‌ها و VS Code را ببند، یک PowerShell تازه باز کن و تست کن:',
+          code: 'Get-ChildItem Env:ANTHROPIC*\nclaude -p "سلام"',
+        },
+      ],
+    },
+    wsl: {
+      note: 'همهٔ دستورها داخل ترمینال WSL. متغیرهای ویندوز (setx) به WSL منتقل نمی‌شوند؛ باید جدا ست شوند.',
+      steps: [
+        {
+          title: '۱) نصب نسخهٔ Linux و بررسی مسیر (نباید /mnt/c/... باشد):',
+          code: `${INSTALL_UNIX}\nwhich claude`,
+        },
+        ...unixSteps('~/.bashrc', '~/.bashrc ~/.profile', '-i', base, k).slice(0, 2),
+        {
+          title: '۴) تست شبکه از داخل WSL، بعد خود Claude:',
+          code:
+            `curl -s ${base}/v1/models -H "Authorization: Bearer $ANTHROPIC_AUTH_TOKEN" | head -c 300\n` +
+            'claude -p "سلام"',
+        },
+        {
+          title: 'اگر curl از WSL به سرور نرسید (ولی از ویندوز می‌رسد)، در %UserProfile%\\.wslconfig بگذار و wsl --shutdown بزن:',
+          code: '[wsl2]\nnetworkingMode=mirrored',
+        },
+      ],
+    },
+  };
+}
+
+const ONBOARDING_FIX_UNIX = `python3 - <<'EOF'
+import json, os
+p = os.path.expanduser('~/.claude.json')
+d = json.load(open(p)) if os.path.exists(p) else {}
+d['hasCompletedOnboarding'] = True
+json.dump(d, open(p, 'w'), indent=2)
+EOF`;
+
+const ONBOARDING_FIX_WIN = [
+  '$p = "$HOME\\.claude.json"',
+  '$j = if (Test-Path $p) { Get-Content $p -Raw | ConvertFrom-Json } else { [pscustomobject]@{} }',
+  '$j | Add-Member -Force -NotePropertyName hasCompletedOnboarding -NotePropertyValue $true',
+  '$j | ConvertTo-Json -Depth 100 | Set-Content -Encoding utf8 $p',
+].join('\n');
+
 export default function CliOnboardingPage() {
   const [name, setName] = useState('کلید من');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [tab, setTab] = useState(0);
+  const [os, setOs] = useState(detectOs());
 
   const createMut = useMutation({
     mutationFn: () => keysApi.create({ name }),
@@ -74,6 +190,7 @@ export default function CliOnboardingPage() {
     () => `export ANTHROPIC_BASE_URL=${base}\nexport ANTHROPIC_AUTH_TOKEN=${k}\nclaude`,
     [base, k],
   );
+  const os_ = useMemo(() => osSteps(base, k), [base, k]);
   const vscodeSnippet = useMemo(
     () =>
       `{\n` +
@@ -131,12 +248,37 @@ export default function CliOnboardingPage() {
       {/* --- Claude Code CLI --- */}
       {tab === 0 && (
         <Stack spacing={2}>
-          <Typography variant="subtitle2">۱) نصب (یک‌بار):</Typography>
-          <CodeBlock text="npm install -g @anthropic-ai/claude-code" />
-          <Typography variant="subtitle2">۲) در پوشهٔ پروژه‌ات اجرا کن:</Typography>
-          <CodeBlock text={cliSnippet} />
+          <Alert severity="warning">
+            از <code>ANTHROPIC_AUTH_TOKEN</code> استفاده کن، نه <code>ANTHROPIC_API_KEY</code>؛ وگرنه Claude Code
+            منوی «Select login method» را نشان می‌دهد. آدرس هم باید با <code>/relay</code> تمام شود.
+          </Alert>
+          <Tabs value={os} onChange={(_, v) => setOs(v)} variant="scrollable" sx={{ minHeight: 36 }}>
+            <Tab value="mac" label="macOS" sx={{ minHeight: 36 }} />
+            <Tab value="linux" label="Linux (Ubuntu)" sx={{ minHeight: 36 }} />
+            <Tab value="win" label="Windows" sx={{ minHeight: 36 }} />
+            <Tab value="wsl" label="Windows + WSL" sx={{ minHeight: 36 }} />
+          </Tabs>
+          {os_[os].note && (
+            <Typography variant="body2" color="text.secondary">
+              {os_[os].note}
+            </Typography>
+          )}
+          {os_[os].steps.map((step) => (
+            <Box key={step.title}>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                {step.title}
+              </Typography>
+              <CodeBlock text={step.code} />
+            </Box>
+          ))}
+          <Alert severity="info">
+            اگر <code>claude -p</code> جواب داد ولی <code>claude</code> هنوز منوی ورود را نشان می‌دهد، فقط صفحهٔ
+            اجرای اول ثبت نشده است. این را اجرا کن:
+          </Alert>
+          <CodeBlock text={os === 'win' ? ONBOARDING_FIX_WIN : ONBOARDING_FIX_UNIX} />
           <Typography variant="body2" color="text.secondary">
-            برای دائمی‌شدن، دو خط export را در <code>~/.bashrc</code> یا <code>~/.zshrc</code> بگذار.
+            اگر در <code>~/.claude/settings.json</code> بخش <code>"env"</code> با کلیدهای <code>ANTHROPIC_*</code>{' '}
+            داری، حذفش کن؛ بر متغیرهای سیستم غلبه می‌کند. راهنمای کامل در صفحهٔ «راهنما» است.
           </Typography>
         </Stack>
       )}
