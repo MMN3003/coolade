@@ -30,6 +30,7 @@ import { getErrorMessage } from '@/utils/errors';
 import LoadingState from '@/components/common/LoadingState';
 import ErrorState from '@/components/common/ErrorState';
 import EmptyState from '@/components/common/EmptyState';
+import { copyText } from '@/utils/clipboard';
 
 export default function KeysPage() {
   const { t } = useTranslation();
@@ -60,7 +61,8 @@ export default function KeysPage() {
   });
 
   function handleCopy(key: string) {
-    navigator.clipboard.writeText(key).then(() => {
+    void copyText(key).then((ok) => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     });
